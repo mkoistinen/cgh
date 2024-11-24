@@ -166,28 +166,28 @@ def compute_hologram(
     points, normals = process_mesh(mesh_data, params.subdivision_factor)
 
     # Compute wave fields
-    object_wave = compute_object_field(points, normals, params)
-    reference_wave = compute_reference_field(params)
+    object_field = compute_object_field(points, normals, params)
+    reference_field = compute_reference_field(params)
 
-    scaling_factor = np.abs(object_wave).max() / np.abs(reference_wave).max() * 0.5
-    reference_wave *= scaling_factor
+    scaling_factor = np.abs(object_field).max() / np.abs(reference_field).max() * 0.5
+    reference_field *= scaling_factor
 
     # Compute interference
-    combined_wave = object_wave + reference_wave
-    phase = np.angle(combined_wave)
-    interference_pattern = np.abs(combined_wave) ** 2
+    combined_field = object_field + reference_field
+    phase = np.angle(combined_field)
+    interference_pattern = np.abs(combined_field) ** 2
 
     # Visualize the reference pattern
     if DEBUG:
-        for wave_type, wave in {
-            "Object Wave": object_wave,
-            "Reference Wave": reference_wave,
-            "Interference Pattern": combined_wave
+        for field_type, field in {
+            "Object Wave": object_field,
+            "Reference Wave": reference_field,
+            "Interference Pattern": combined_field
         }.items():
-            amplitude = np.abs(wave)
-            phase = np.angle(wave)
-            print(f"{wave_type} Amplitude: min={amplitude.min()}, max={amplitude.max()}")
-            print(f"{wave_type} Phase: min={phase.min()}, max={phase.max()}")
-            visualize_wave(wave, params)
+            amplitude = np.abs(field)
+            phase = np.angle(field)
+            print(f"{field_type} Amplitude: min={amplitude.min()}, max={amplitude.max()}")
+            print(f"{field_type} Phase: min={phase.min()}, max={phase.max()}")
+            visualize_wave(field, params)
 
     return interference_pattern, phase

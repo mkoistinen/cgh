@@ -1,14 +1,7 @@
 from dataclasses import dataclass
-from typing import NamedTuple, Union
+from typing import NamedTuple, Union, TypeVar
 
 import numpy as np
-
-
-try:
-    FloatType = Union[np.float64, np.float128]
-except AttributeError:
-    # On platforms without float128 support, just use float64
-    FloatType = np.float64
 
 
 @dataclass(frozen=True)
@@ -51,9 +44,9 @@ class HologramParameters:
 
 class Point3D(NamedTuple):
     """3D point representation."""
-    x: FloatType
-    y: FloatType
-    z: FloatType
+    x: np.float64
+    y: np.float64
+    z: np.float64
 
 
 class Triangle(NamedTuple):

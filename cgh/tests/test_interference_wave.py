@@ -6,12 +6,12 @@ import pytest
 import random
 from scipy.fft import fft, fftfreq
 
-from cgh import FLOAT_TYPES, COMPLEX_TYPES
 from cgh.hologram import (
-    compute_object_wave_field,
-    compute_reference_wave_field,
+    compute_object_field,
+    compute_reference_field,
     compute_hologram,
 )
+from cgh.tests.conftest import FLOAT_TYPES, COMPLEX_TYPES
 from cgh.tests.utilities import generate_test_points_normals
 from cgh.utilities import (
     create_grid,
@@ -109,8 +109,8 @@ class TestInterferenceWave:
     def test_interference_pattern_geometry_handling(self, test_parameters):
         """Test interference pattern for symmetry and energy conservation."""
         points, normals = generate_test_points_normals(1)
-        object_wave = compute_object_wave_field(points, normals, test_parameters)
-        reference_wave = compute_reference_wave_field(test_parameters)
+        object_wave = compute_object_field(points, normals, test_parameters)
+        reference_wave = compute_reference_field(test_parameters)
         interference_pattern = self.compute_interference_pattern(object_wave, reference_wave)
 
         # Compute energies with consistent dtype
@@ -148,7 +148,7 @@ class TestInterferenceWave:
         test_parameters = replace(test_parameters, plate_resolution=plate_resolution, dtype=dtype)
 
         symmetric_stl = "cgh/stls/symmetric_object.stl"
-        interference = compute_hologram(symmetric_stl, test_parameters)
+        interference, _phase = compute_hologram(symmetric_stl, test_parameters)
 
         # Align shapes for symmetry comparison
         left_half = interference[:, :interference.shape[1] // 2]
@@ -195,7 +195,7 @@ class TestInterferenceWave:
         symmetric_stl = "cgh/stls/symmetric_object.stl"
 
         # Simulate interference pattern
-        interference = compute_hologram(symmetric_stl, test_parameters)
+        interference, _phase = compute_hologram(symmetric_stl, test_parameters)
 
         if DEBUG:
             # Visualize the interference pattern
@@ -279,7 +279,7 @@ class TestInterferenceWave:
         )
 
     @pytest.mark.parametrize("plate_resolution", [94.488])  # 47.244,
-    @pytest.mark.parametrize("dtype", COMPLEX_TYPES)
+    @pytest.mark.parametrize("dtype", [np.complex64, ])  # Need more memory for larger types!
     def test_interference_pattern_energy_conservation(self, test_parameters, plate_resolution, dtype):
         """
         Test that total energy of the interference pattern is consistent.
@@ -297,13 +297,13 @@ class TestInterferenceWave:
         # Symmetric object wave
         obj_mesh = load_and_scale_mesh("cgh/stls/symmetric_object.stl", scale_factor=10.0, dtype=params.dtype)
         points, normals = process_mesh(obj_mesh, params.subdivision_factor)
-        object_wave = compute_object_wave_field(
+        object_wave = compute_object_field(
             points=points, normals=normals, params=params,
             num_processes=2
         )
 
         # Symmetric reference wave
-        reference_wave = compute_reference_wave_field(params)
+        reference_wave = compute_reference_field(params)
 
         # Compute interference
         interference = self.compute_interference_pattern(object_wave, reference_wave, dtype=dtype)
@@ -349,8 +349,8 @@ class TestInterferenceWave:
     def test_interference_pattern_properties(self, test_parameters):
         """Test basic physical properties of interference pattern."""
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, test_parameters)
-        ref_wave = compute_reference_wave_field(test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters)
+        ref_wave = compute_reference_field(test_parameters)
         interference = self.compute_interference_pattern(obj_wave, ref_wave)
 
         # Test reality and positivity
@@ -379,8 +379,8 @@ class TestInterferenceWave:
 
         # Generate object and reference waves
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, test_parameters)
-        ref_wave = compute_reference_wave_field(test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters)
+        ref_wave = compute_reference_field(test_parameters)
 
         # Compute interference pattern
         interference = self.compute_interference_pattern(obj_wave, ref_wave)
@@ -454,7 +454,7 @@ class TestInterferenceWave:
             err_msg="Fringe spacing does not match expected value"
         )
 
-    @pytest.mark.parametrize("wavelength,expected_scale", [
+    @pytest.mark.parametrize("wavelength, expected_scale", [
         (0.532, 1.0),    # Green laser (reference)
         (0.633, 1.19),   # Red laser
         (0.450, 0.85),   # Blue laser
@@ -463,8 +463,8 @@ class TestInterferenceWave:
         """Test that interference pattern scales correctly with wavelength."""
         params = replace(test_parameters, wavelength=wavelength)
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, params)
-        ref_wave = compute_reference_wave_field(params)
+        obj_wave = compute_object_field(points, normals, params)
+        ref_wave = compute_reference_field(params)
         interference = self.compute_interference_pattern(obj_wave, ref_wave)
 
         # Ensure the center index is an integer

@@ -6,12 +6,10 @@ import sys
 from . import get_numpy_precision_types
 from .hologram import HologramParameters, compute_hologram
 from .image import create_hologram_image
+from .utilities import show_grid_memory_requirements
 
 
 FLOAT, COMPLEX = get_numpy_precision_types()
-
-
-print(f"{type(FLOAT)=}")
 
 
 class NormalizationMethod(str, Enum):
@@ -45,6 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         'stl_path',
         type=Path,
+        default="cgh/stls/dodecaherdon.stl",
         help='Path to input STL file'
     )
 
@@ -148,6 +147,8 @@ def main() -> None:
         subdivision_factor=args.subdivision_factor
     )
 
+    show_grid_memory_requirements(params)
+
     try:
         # Validate input file
         if not args.stl_path.exists():
@@ -158,13 +159,14 @@ def main() -> None:
 
         # Simulate hologram
         print(f"Processing STL file: {args.stl_path}")
-        interference_pattern = compute_hologram(args.stl_path, params)
+        interference_pattern, phase = compute_hologram(args.stl_path, params)
 
         # Save output
         print(f"Saving hologram to: {args.output}")
         create_hologram_image(
-            interference_pattern,
-            str(args.output),
+            interference_pattern=interference_pattern,
+            phase=phase,
+            output_path=str(args.output),
             output_type=args.output_type,
             normalization_method=args.normalization
         )
@@ -186,3 +188,7 @@ def main() -> None:
     except Exception as e:
         print(f"Error: {str(e)}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

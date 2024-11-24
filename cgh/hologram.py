@@ -4,8 +4,7 @@ import numpy as np
 import numpy.typing as npt
 from pathlib import Path
 
-from . import get_numpy_precision_types
-from .types import FloatType, HologramParameters, Point3D
+from .types import HologramParameters, Point3D
 from .utilities import (
     create_grid,
     load_and_scale_mesh,
@@ -14,12 +13,10 @@ from .utilities import (
 )
 
 
-FLOAT, COMPLEX = get_numpy_precision_types()
-
 DEBUG = False
 
 
-def compute_reference_wave_field(params: HologramParameters) -> npt.NDArray:
+def compute_reference_field(params: HologramParameters) -> npt.NDArray:
     """
     Compute a reference wave based on the light source distance.
 
@@ -43,10 +40,11 @@ def compute_reference_wave_field(params: HologramParameters) -> npt.NDArray:
 
     # Compute spherical wave
     R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=params.dtype)
-    return np.exp(1j * k * R) / R
+    reference_field = np.exp(1j * k * R) / R
+    return reference_field
 
 
-def compute_chunk_wave_field(
+def compute_chunk_field(
     points_chunk: list[Point3D],
     normals_chunk: list[Point3D],
     X: np.ndarray,
@@ -84,14 +82,14 @@ def compute_chunk_wave_field(
     return wave_field_chunk
 
 
-def compute_object_wave_field(
+def compute_object_field(
     points: list[Point3D],
     normals: list[Point3D],
     params: HologramParameters,
     num_processes: int = None
 ) -> npt.NDArray:
     """
-    Compute object wave field using Fresnel approximation with Lambert scattering.
+    Compute object field using Fresnel approximation with Lambert scattering.
     Parallelized implementation using multiprocessing and chunking.
     """
     # Generate symmetric grid
@@ -104,7 +102,7 @@ def compute_object_wave_field(
 
     # Use multiprocessing Pool
     if num_processes == 1:
-        wave = compute_chunk_wave_field(
+        wave = compute_chunk_field(
             points,
             normals,
             X=X,
@@ -125,7 +123,7 @@ def compute_object_wave_field(
         ]
 
         # Partial function to include fixed arguments
-        partial_compute = partial(compute_chunk_wave_field, X=X, Y=Y, params=params)
+        partial_compute = partial(compute_chunk_field, X=X, Y=Y, params=params)
 
         with Pool(processes=num_processes) as pool:
             wave_contributions = pool.starmap(partial_compute, chunks)
@@ -139,7 +137,7 @@ def compute_object_wave_field(
 def compute_hologram(
     stl_path: Path,
     params: HologramParameters
-) -> npt.NDArray[FloatType]:
+) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Compute a Transmission Hologram.
 
@@ -168,19 +166,28 @@ def compute_hologram(
     points, normals = process_mesh(mesh_data, params.subdivision_factor)
 
     # Compute wave fields
-    object_wave = compute_object_wave_field(points, normals, params)
-    reference_wave = compute_reference_wave_field(params)
+    object_wave = compute_object_field(points, normals, params)
+    reference_wave = compute_reference_field(params)
 
-    # Visualize the reference pattern
-    if DEBUG:
-        visualize_wave(reference_wave, params)
+    scaling_factor = np.abs(object_wave).max() / np.abs(reference_wave).max() * 0.5
+    reference_wave *= scaling_factor
 
     # Compute interference
     combined_wave = object_wave + reference_wave
+    phase = np.angle(combined_wave)
     interference_pattern = np.abs(combined_wave) ** 2
 
-    print("Object Wave - Max:", np.max(np.abs(object_wave)), "Min:", np.min(np.abs(object_wave)))
-    print("Reference Wave - Max:", np.max(np.abs(reference_wave)), "Min:", np.min(np.abs(reference_wave)))
-    print("Interference Pattern - Max:", np.max(interference_pattern), "Min:", np.min(interference_pattern))
+    # Visualize the reference pattern
+    if DEBUG:
+        for wave_type, wave in {
+            "Object Wave": object_wave,
+            "Reference Wave": reference_wave,
+            "Interference Pattern": combined_wave
+        }.items():
+            amplitude = np.abs(wave)
+            phase = np.angle(wave)
+            print(f"{wave_type} Amplitude: min={amplitude.min()}, max={amplitude.max()}")
+            print(f"{wave_type} Phase: min={phase.min()}, max={phase.max()}")
+            visualize_wave(wave, params)
 
-    return interference_pattern
+    return interference_pattern, phase

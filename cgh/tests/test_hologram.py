@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cgh import FLOAT_TYPES
 from cgh.hologram import compute_hologram
+from cgh.tests.conftest import FLOAT_TYPES
 from cgh.types import Point3D, Triangle
 from cgh.utilities import subdivide_triangle
 
@@ -42,7 +42,7 @@ def test_precision_impact(dtype, test_parameters, plate_resolution, light_source
         plate_resolution=plate_resolution,
         light_source_distance=light_source_distance,
     )
-    interference = compute_hologram(Path("cgh/stls/symmetric_object.stl"), test_parameters)
+    interference, _phase = compute_hologram(Path("cgh/stls/symmetric_object.stl"), test_parameters)
 
     # Visualize the interference pattern
     if DEBUG:
@@ -106,7 +106,7 @@ def generate_symmetric_waves(resolution: int, dtype=np.complex128) -> tuple[np.n
 @pytest.mark.parametrize("test_stl_file", ["cgh/stls/symmetric_object.stl"])
 def test_full_simulation_basic_properties(test_parameters, test_stl_file):
     """Test basic properties of complete simulation."""
-    interference = compute_hologram(test_stl_file, test_parameters)
+    interference, _phase = compute_hologram(test_stl_file, test_parameters)
     expected_size = int(
         np.round(test_parameters.plate_size * test_parameters.plate_resolution),
     )

@@ -1,12 +1,12 @@
 from dataclasses import replace
 from functools import lru_cache
 
-from cgh import FLOAT_TYPES
 import numpy as np
 from numpy.testing import assert_array_almost_equal
 import pytest
 
-from cgh.hologram import compute_reference_wave_field
+from cgh.hologram import compute_reference_field
+from cgh.tests.conftest import FLOAT_TYPES
 from cgh.utilities import create_grid
 
 
@@ -14,7 +14,7 @@ class TestReferenceWave:
 
     @lru_cache
     def get_reference_wave(self, test_parameters):
-        return compute_reference_wave_field(test_parameters)
+        return compute_reference_field(test_parameters)
 
     @pytest.mark.parametrize("dtype", FLOAT_TYPES)
     @pytest.mark.parametrize("plate_resolution", [47.244, 94.488])

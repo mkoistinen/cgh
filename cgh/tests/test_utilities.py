@@ -97,7 +97,7 @@ def test_grid_boundary_symmetry(plate_resolution):
 def test_grid_range(plate_resolution):
     # TODO: This should handle non-square plate_sizes
     size = 25.4  # mm
-    X, Y = create_grid(size, plate_resolution)
+    X, Y = create_grid(size, plate_resolution, indexing="ij")
 
     print(f"X:\n{X}")
     print(f"Y:\n{Y}")

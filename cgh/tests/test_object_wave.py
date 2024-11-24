@@ -3,8 +3,8 @@ import numpy as np
 from numpy.testing import assert_almost_equal
 import pytest
 
-from cgh import FLOAT_TYPES
-from cgh.hologram import compute_object_wave_field
+from cgh.hologram import compute_object_field
+from cgh.tests.conftest import FLOAT_TYPES
 from cgh.tests.utilities import generate_test_points_normals
 
 
@@ -13,7 +13,7 @@ class TestObjectWave:
     def test_object_wave_amplitude_falloff(self, test_parameters):
         """Test that amplitude falls off as 1/r."""
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters)
 
         resolution = int(np.round(test_parameters.plate_size * test_parameters.plate_resolution))
         center_idx = resolution // 2
@@ -59,7 +59,7 @@ class TestObjectWave:
         """Test that phase propagates spherically from point source."""
         test_parameters = replace(test_parameters, plate_resolution=plate_resolution)
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters)
         phase = np.angle(obj_wave)
 
         resolution = int(np.round(test_parameters.plate_size * plate_resolution))
@@ -134,7 +134,7 @@ class TestObjectWave:
             wavelength=dtype(test_parameters.wavelength)
         )
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_wave_field(points, normals, test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters)
 
         left_half = obj_wave[:, :obj_wave.shape[1] // 2]
         right_half = np.flip(obj_wave[:, (obj_wave.shape[1] + 1) // 2:], axis=1)

@@ -7,6 +7,18 @@ from stl import mesh
 from cgh.types import HologramParameters
 
 
+FLOAT_TYPES = [
+    getattr(np, f"float{t}") for t in [32, 64, 128, 256]
+    if hasattr(np, f"float{t}")
+]
+
+
+COMPLEX_TYPES = [
+    getattr(np, f"complex{t}") for t in [64, 128, 256, 512]
+    if hasattr(np, f"complex{t}")
+]
+
+
 def create_test_stl(path: Path = Path("test_object.stl")) -> Path:
     """Create a simple test STL file."""
     vertices = np.array([

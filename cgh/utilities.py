@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 from typing import Tuple
 import warnings
@@ -7,18 +8,14 @@ import numpy as np
 import numpy.typing as npt
 from stl import mesh
 
-from . import get_numpy_precision_types
-from .types import FloatType, HologramParameters, Point3D, Triangle
-
-
-FLOAT, COMPLEX = get_numpy_precision_types()
+from .types import HologramParameters, Point3D, Triangle
 
 
 def load_and_scale_mesh(
     stl_path: Path,
     scale_factor: float,
-    dtype: type = np.float64,
-) -> npt.NDArray[FloatType]:
+    dtype: float = np.float64,
+) -> npt.NDArray[np.float64]:
     """
     Load and scale an STL mesh.
 
@@ -40,7 +37,10 @@ def load_and_scale_mesh(
     return dtype(stl_mesh.vectors) * scale_factor
 
 
-def compute_triangle_normal(triangle: Triangle, dtype: type = np.float64) -> Point3D:
+def compute_triangle_normal(
+    triangle: Triangle,
+    dtype: float = np.float64
+) -> Point3D:
     """
     Compute normal vector for a triangle.
 
@@ -72,7 +72,7 @@ def compute_triangle_normal(triangle: Triangle, dtype: type = np.float64) -> Poi
 
 
 def process_mesh(
-    mesh_data: npt.NDArray[FloatType],
+    mesh_data: npt.NDArray[np.float64],
     subdivision_factor: int,
     dtype: type = np.float64,
 ) -> Tuple[list[Point3D], list[Point3D]]:
@@ -108,18 +108,23 @@ def process_mesh(
         if np.all(np.array(normal, dtype=dtype) == 0):
             continue
 
-        subdivided = subdivide_triangle(triangle, subdivision_factor)
+        subdivided = subdivide_triangle(
+            triangle,
+            subdivision_factor,
+            dtype=dtype,
+        )
         for sub_triangle in subdivided:
             # Compute centroid
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
-                centroid = Point3D(*(sum(FLOAT(p) for p in sub_triangle) / 3))
+                centroid = Point3D(*(sum(np.float64(p) for p in sub_triangle) / 3))
             points.append(centroid)
             normals.append(normal)
 
     return points, normals
 
 
+@lru_cache
 def create_grid(
     size: float,
     resolution: float,
@@ -158,7 +163,8 @@ def create_grid(
 
 def subdivide_triangle(
     triangle: Triangle,
-    levels: int
+    levels: int,
+    dtype: float = np.float64,
 ) -> list[Triangle]:
     """
     Recursively subdivide a triangle.
@@ -181,9 +187,9 @@ def subdivide_triangle(
     # Compute midpoints with 128-bit precision
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
-        mid1 = Point3D(*(FLOAT(triangle.v1) + FLOAT(triangle.v2)) / 2)
-        mid2 = Point3D(*(FLOAT(triangle.v2) + FLOAT(triangle.v3)) / 2)
-        mid3 = Point3D(*(FLOAT(triangle.v3) + FLOAT(triangle.v1)) / 2)
+        mid1 = Point3D(*(dtype(triangle.v1) + dtype(triangle.v2)) / 2)
+        mid2 = Point3D(*(dtype(triangle.v2) + dtype(triangle.v3)) / 2)
+        mid3 = Point3D(*(dtype(triangle.v3) + dtype(triangle.v1)) / 2)
 
     new_triangles = [
         Triangle(triangle.v1, mid1, mid3),
@@ -246,3 +252,14 @@ def visualize_wave(reference_wave: np.ndarray, params: HologramParameters) -> No
 
     plt.tight_layout()
     plt.show()
+
+
+def show_grid_memory_requirements(params: HologramParameters):
+    X, Y = create_grid(
+        params.plate_size,
+        params.plate_resolution,
+        indexing="xy",
+        dtype=params.dtype,
+    )
+    bytes = X.nbytes + Y.nbytes
+    print(f"Grid requires {bytes:,d} bytes ({bytes / 1024 ** 2:,.3f} MB)")

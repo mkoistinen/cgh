@@ -1,18 +1,8 @@
 import numpy as np
+from typing_extensions import deprecated
 
 
-FLOAT_TYPES = [
-    getattr(np, f"float{t}") for t in [32, 64, 128, 256]
-    if hasattr(np, f"float{t}")
-]
-
-
-COMPLEX_TYPES = [
-    getattr(np, f"complex{t}") for t in [64, 128, 256, 512]
-    if hasattr(np, f"complex{t}")
-]
-
-
+@deprecated("No longer to be used.")
 def get_numpy_precision_types(force_64bit=False):
     supported_types = {}
     try:
@@ -37,5 +27,5 @@ def get_numpy_precision_types(force_64bit=False):
         return np.float64, np.complex128
 
 
-FLOAT, COMPLEX = get_numpy_precision_types()
-print(f"Using {FLOAT=} and {COMPLEX=}.")
+FLOAT, COMPLEX = np.float64, np.complex128
+print(f"Using numpy.{FLOAT.__name__} and numpy.{COMPLEX.__name__} precision.")

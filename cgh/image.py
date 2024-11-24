@@ -1,11 +1,14 @@
+from enum import Enum
 from pathlib import Path
+from typing import Literal
+
 import numpy as np
 import numpy.typing as npt
 from PIL import Image
-from enum import Enum
+
 
 from . import get_numpy_precision_types
-from .types import FloatType
+
 
 FLOAT, COMPLEX = get_numpy_precision_types()
 
@@ -24,17 +27,19 @@ class OutputType(str, Enum):
 
 
 def create_hologram_image(
-    interference_pattern: npt.NDArray[FloatType],
+    interference_pattern: npt.NDArray,
+    phase: npt.NDArray,
     output_path: Path,
     output_type: OutputType = OutputType.PREVIEW,
-    normalization_method: NormalizationMethod = NormalizationMethod.MINMAX
+    normalization_method: NormalizationMethod = NormalizationMethod.MINMAX,
+    render_type: Literal["phase", "amplitude", "both"] = "phase"
 ) -> None:
     """
     Convert interference pattern to an image suitable for holographic film.
 
     Parameters
     ----------
-    interference_pattern : npt.NDArray[FloatType]
+    interference_pattern : npt.NDArray[ComplexType]
         2D array of interference intensities using 64-bit precision
     output_path : Path
         Path to save the output image
@@ -53,6 +58,12 @@ def create_hologram_image(
     The high_quality output uses TIFF format with floating-point values
     to maintain maximum precision for photographic reproduction.
     """
+
+    phase_normalized = (2 ** 16 - 1) * (phase + np.pi) / (2 * np.pi)  # Map [-pi, pi] to [0, 65535]
+    phase_data = phase_normalized.astype(np.uint16)
+    phase_img = Image.fromarray(phase_data, mode='I;16')
+    phase_img.save("hologram_phase.png", format='PNG')
+
     # Ensure we're working with 64-bit precision
     pattern = FLOAT(interference_pattern)
 

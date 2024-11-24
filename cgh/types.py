@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import NamedTuple, Union, TypeVar
+from typing import NamedTuple
 
 import numpy as np
 

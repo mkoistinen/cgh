@@ -7,12 +7,6 @@ import numpy.typing as npt
 from PIL import Image
 
 
-from . import get_numpy_precision_types
-
-
-FLOAT, COMPLEX = get_numpy_precision_types()
-
-
 class NormalizationMethod(str, Enum):
     """Enumeration of supported normalization methods."""
     MINMAX = 'minmax'
@@ -65,7 +59,7 @@ def create_hologram_image(
     phase_img.save("hologram_phase.png", format='PNG')
 
     # Ensure we're working with 64-bit precision
-    pattern = FLOAT(interference_pattern)
+    pattern = np.float64(interference_pattern)
 
     # Normalization
     if normalization_method == NormalizationMethod.MINMAX:
@@ -78,7 +72,7 @@ def create_hologram_image(
 
     elif normalization_method == NormalizationMethod.LOG:
         # Add small constant to avoid log(0)
-        eps = np.finfo(FLOAT).tiny
+        eps = np.finfo(np.float64).tiny
         normalized = np.log1p(pattern) / np.log1p(np.max(pattern) + eps)
 
     elif normalization_method == NormalizationMethod.SIGMOID:

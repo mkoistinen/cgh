@@ -3,7 +3,8 @@ from enum import Enum
 from pathlib import Path
 import sys
 
-from . import FLOAT, COMPLEX
+import numpy as np
+
 from .hologram import HologramParameters, compute_hologram
 from .image import create_hologram_image
 from .utilities import show_grid_memory_requirements, Timer
@@ -126,13 +127,30 @@ def parse_args() -> argparse.Namespace:
         help='Enable debug output and save intermediate results'
     )
 
+    parser.add_argument(
+        '--high-precision',
+        action='store_true',
+        help='If set, will use np.float128 and np.complex256, if available'
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Main function with command line interface."""
-    print(f"Using numpy.{FLOAT.__name__} and numpy.{COMPLEX.__name__} precision.")
     args = parse_args()
+
+    if args.high_precision:
+        try:
+            dtype = np.float128
+            complex_dtype = np.complex256
+        except Exception:
+            dtype = np.float64
+            complex_dtype = np.complex128
+    else:
+        dtype = np.float64
+        complex_dtype = np.complex128
+
+    print(f"Using numpy.{dtype.__name__} and numpy.{complex_dtype.__name__} precision.")
 
     # Create parameter object from arguments
     params = HologramParameters(
@@ -142,7 +160,9 @@ def main() -> None:
         light_source_distance=args.light_source_distance,
         object_distance=args.object_distance,
         scale_factor=args.scale_factor,
-        subdivision_factor=args.subdivision_factor
+        subdivision_factor=args.subdivision_factor,
+        dtype=dtype,
+        complex_dtype=complex_dtype,
     )
 
     show_grid_memory_requirements(params)

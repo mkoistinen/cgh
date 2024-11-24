@@ -59,51 +59,14 @@ def compute_chunk_field(
     normals_chunk: list[Point3D],
     X: np.ndarray,
     Y: np.ndarray,
-    params: HologramParameters
+    params: HologramParameters,
+    is_chunked: True,
 ) -> npt.NDArray:
     """
     Compute the wave field contribution for a chunk of points and normals.
     """
     wave_field_chunk = np.zeros_like(X, dtype=params.complex_dtype)
     view_vector = np.array([0, 0, -1], dtype=params.dtype)
-    k = 2 * np.pi / params.wavelength
-
-    for point, normal in zip(points_chunk, normals_chunk):
-        # Lambert scattering
-        cos_angle = np.abs(
-            np.dot(np.array(normal, dtype=params.dtype), view_vector),
-        )
-        if cos_angle <= 0:
-            continue
-
-        # Signed differences for proper distance calculation
-        dx = X - point.x
-        dy = Y - point.y
-        dz = point.z + params.object_distance
-
-        # Radial distance
-        R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=params.dtype)
-
-        # Full complex wave contribution
-        wave_contribution = (cos_angle / R) * np.exp(1j * k * R)
-
-        wave_field_chunk += wave_contribution
-
-    return wave_field_chunk
-
-
-def compute_chunk_field_with_occlusion(
-    points_chunk: list[Point3D],
-    normals_chunk: list[Point3D],
-    X: np.ndarray,
-    Y: np.ndarray,
-    params: HologramParameters,
-    is_chunked: True,
-) -> npt.NDArray:
-    """
-    Compute the wave field contribution for a chunk of points and normals with occlusion detection.
-    """
-    wave_field_chunk = np.zeros_like(X, dtype=params.complex_dtype)
     k = 2 * np.pi / params.wavelength
 
     if is_chunked:
@@ -121,32 +84,24 @@ def compute_chunk_field_with_occlusion(
         if not is_chunked:
             task = progress.add_task("Computing (at once)", total=len(points_chunk))
         for point, normal in zip(points_chunk, normals_chunk):
-            # Calculate line-of-sight vector from grid to triangle centroid
+            # Lambert scattering
+            cos_angle = np.abs(
+                np.dot(np.array(normal, dtype=params.dtype), view_vector),
+            )
+            if cos_angle <= 0:
+                continue
+
+            # Signed differences for proper distance calculation
             dx = X - point.x
             dy = Y - point.y
-            dz = params.object_distance - point.z
+            dz = point.z + params.object_distance
+
+            # Radial distance
             R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=params.dtype)
 
-            # Normalize the line-of-sight vector
-            los_vector_x = dx / R
-            los_vector_y = dy / R
-            los_vector_z = dz / R
+            # Full complex wave contribution
+            wave_contribution = (cos_angle / R) * np.exp(1j * k * R)
 
-            # Check occlusion using dot product with the triangle normal
-            normal_vec = np.array([normal.x, normal.y, normal.z], dtype=params.dtype)
-            dot_product = (
-                los_vector_x * normal_vec[0]
-                + los_vector_y * normal_vec[1]
-                + los_vector_z * normal_vec[2]
-            )
-            visible_mask = dot_product > 0  # Only include visible contributions
-
-            # Add contributions only for visible points
-            wave_contribution = np.zeros_like(R, dtype=params.complex_dtype)
-            wave_contribution[visible_mask] = (
-                (dot_product[visible_mask] / R[visible_mask])
-                * np.exp(1j * k * R[visible_mask])
-            )
             wave_field_chunk += wave_contribution
 
             if not is_chunked:
@@ -175,7 +130,7 @@ def compute_object_field(
 
     # Use multiprocessing Pool
     if num_processes == 1:
-        wave = compute_chunk_field_with_occlusion(
+        wave = compute_chunk_field(
             points,
             normals,
             X=X,
@@ -199,7 +154,7 @@ def compute_object_field(
 
         # Partial function to include fixed arguments
         partial_compute = partial(
-            compute_chunk_field_with_occlusion,
+            compute_chunk_field,
             X=X, Y=Y, params=params, is_chunked=True
         )
 

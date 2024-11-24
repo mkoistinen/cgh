@@ -33,7 +33,7 @@ class HologramParameters:
     wavelength: float = 0.532  # 532 nm (green laser) in mm
     plate_size: float = 25.4      # 25.4 mm plate
     plate_resolution: float = 23.622  # dots per mm / 600 dpi
-    light_source_distance: float = 500.0  # mm
+    light_source_distance: float = 100.0  # mm
     object_distance: float = 50.0  # mm behind plate
     scale_factor: float = 12.0
     subdivision_factor: int = 4

@@ -13,7 +13,7 @@ class TestObjectWave:
     def test_object_wave_amplitude_falloff(self, test_parameters):
         """Test that amplitude falls off as 1/r."""
         points, normals = generate_test_points_normals(1)
-        obj_wave = compute_object_field(points, normals, test_parameters)
+        obj_wave = compute_object_field(points, normals, test_parameters, num_processes=1)
 
         resolution = int(np.round(test_parameters.plate_size * test_parameters.plate_resolution))
         center_idx = resolution // 2
@@ -23,22 +23,24 @@ class TestObjectWave:
         corner_amp = np.abs(obj_wave[0, 0])
 
         # Calculate distances exactly as done in compute_fresnel_wave_field
-        x = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution)
-        y = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution)
+        x = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float64)
+        y = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float64)
         X, Y = np.meshgrid(x, y)
 
         # Calculate center distance
         r_center = np.sqrt(
             (X[center_idx, center_idx] - points[0].x) ** 2 +
             (Y[center_idx, center_idx] - points[0].y) ** 2 +
-            (points[0].z + test_parameters.object_distance)**2
+            (points[0].z + test_parameters.object_distance)**2,
+            dtype=np.float64,
         )
 
         # Calculate corner distance
         r_corner = np.sqrt(
             (X[0, 0] - points[0].x) ** 2 +
             (Y[0, 0] - points[0].y) ** 2 +
-            (points[0].z + test_parameters.object_distance)**2
+            (points[0].z + test_parameters.object_distance) ** 2,
+            dtype=np.float64,
         )
 
         expected_ratio = r_center / r_corner

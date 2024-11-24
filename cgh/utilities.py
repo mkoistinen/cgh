@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Tuple
@@ -9,6 +10,29 @@ import numpy.typing as npt
 from stl import mesh
 
 from .types import HologramParameters, Point3D, Triangle
+
+
+class Timer:
+    """
+    A context manager that records the duration of the execution of the body.
+
+    Parameters
+    ----------
+    msg : str, default ""
+        If non-empty, prints the string on exit followed by the duration.
+    """
+
+    def __init__(self, msg=""):
+        self._msg = msg
+
+    def __enter__(self) -> "Timer":
+        self._start = datetime.now()
+        return self
+
+    def __exit__(self, *args):
+        self._duration: timedelta = datetime.now() - self._start
+        if self._msg:
+            print(self._msg, self._duration)
 
 
 def load_and_scale_mesh(
@@ -90,7 +114,7 @@ def process_mesh(
 
     Returns
     -------
-    Tuple[List[Point3D], List[Point3D]]
+    tuple[list[Point3D], list[Point3D]]
         Points and their corresponding normals
     """
     points = []

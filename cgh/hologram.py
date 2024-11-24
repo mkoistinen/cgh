@@ -1,8 +1,18 @@
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import nullcontext
 from functools import partial
-from multiprocessing import cpu_count, Pool
+from multiprocessing import cpu_count
 import numpy as np
 import numpy.typing as npt
 from pathlib import Path
+from rich.progress import (
+    BarColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from .types import HologramParameters, Point3D
 from .utilities import (
@@ -82,6 +92,69 @@ def compute_chunk_field(
     return wave_field_chunk
 
 
+def compute_chunk_field_with_occlusion(
+    points_chunk: list[Point3D],
+    normals_chunk: list[Point3D],
+    X: np.ndarray,
+    Y: np.ndarray,
+    params: HologramParameters,
+    is_chunked: True,
+) -> npt.NDArray:
+    """
+    Compute the wave field contribution for a chunk of points and normals with occlusion detection.
+    """
+    wave_field_chunk = np.zeros_like(X, dtype=params.complex_dtype)
+    k = 2 * np.pi / params.wavelength
+
+    if is_chunked:
+        ContextManager = nullcontext()
+    else:
+        ContextManager = Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+        )
+
+    with ContextManager as progress:
+        if not is_chunked:
+            task = progress.add_task("Computing (at once)", total=len(points_chunk))
+        for point, normal in zip(points_chunk, normals_chunk):
+            # Calculate line-of-sight vector from grid to triangle centroid
+            dx = X - point.x
+            dy = Y - point.y
+            dz = params.object_distance - point.z
+            R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=params.dtype)
+
+            # Normalize the line-of-sight vector
+            los_vector_x = dx / R
+            los_vector_y = dy / R
+            los_vector_z = dz / R
+
+            # Check occlusion using dot product with the triangle normal
+            normal_vec = np.array([normal.x, normal.y, normal.z], dtype=params.dtype)
+            dot_product = (
+                los_vector_x * normal_vec[0]
+                + los_vector_y * normal_vec[1]
+                + los_vector_z * normal_vec[2]
+            )
+            visible_mask = dot_product > 0  # Only include visible contributions
+
+            # Add contributions only for visible points
+            wave_contribution = np.zeros_like(R, dtype=params.complex_dtype)
+            wave_contribution[visible_mask] = (
+                (dot_product[visible_mask] / R[visible_mask])
+                * np.exp(1j * k * R[visible_mask])
+            )
+            wave_field_chunk += wave_contribution
+
+            if not is_chunked:
+                progress.update(task, advance=1)
+
+    return wave_field_chunk
+
+
 def compute_object_field(
     points: list[Point3D],
     normals: list[Point3D],
@@ -89,7 +162,7 @@ def compute_object_field(
     num_processes: int = None
 ) -> npt.NDArray:
     """
-    Compute object field using Fresnel approximation with Lambert scattering.
+    Compute object field using Fresnel approximation with Lambert scattering and occlusion detection.
     Parallelized implementation using multiprocessing and chunking.
     """
     # Generate symmetric grid
@@ -102,31 +175,53 @@ def compute_object_field(
 
     # Use multiprocessing Pool
     if num_processes == 1:
-        wave = compute_chunk_field(
+        wave = compute_chunk_field_with_occlusion(
             points,
             normals,
             X=X,
             Y=Y,
             params=params,
+            is_chunked=False,
         )
         wave_contributions = [wave, ]
     else:
         # Determine chunk size
         num_points = len(points)
         num_chunks = num_processes or cpu_count()
-        chunk_size = (num_points + num_chunks - 1) // num_chunks
+        chunk_size = min(128, (num_points + num_chunks - 1) // num_chunks)
 
         # Split points and normals into chunks
         chunks = [
             (points[i:i + chunk_size], normals[i:i + chunk_size])
             for i in range(0, num_points, chunk_size)
         ]
+        print(f"{len(chunks)=}")
 
         # Partial function to include fixed arguments
-        partial_compute = partial(compute_chunk_field, X=X, Y=Y, params=params)
+        partial_compute = partial(
+            compute_chunk_field_with_occlusion,
+            X=X, Y=Y, params=params, is_chunked=True
+        )
 
-        with Pool(processes=num_processes) as pool:
-            wave_contributions = pool.starmap(partial_compute, chunks)
+        with (
+            ProcessPoolExecutor() as pool,
+            Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeElapsedColumn(),
+                TimeRemainingColumn(),
+            ) as progress,
+        ):
+            task = progress.add_task("Computing (chunked)", total=len(chunks))
+            futures = [
+                pool.submit(partial_compute, points_chunk, normals_chunk)
+                for points_chunk, normals_chunk in chunks
+            ]
+            wave_contributions = []
+            for future in as_completed(futures):
+                wave_contributions.append(future.result())
+                progress.update(task, advance=1)
 
     # Sum contributions from all chunks
     wave_field = np.sum(wave_contributions, axis=0, dtype=params.complex_dtype)

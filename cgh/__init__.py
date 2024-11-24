@@ -28,4 +28,3 @@ def get_numpy_precision_types(force_64bit=False):
 
 
 FLOAT, COMPLEX = np.float64, np.complex128
-print(f"Using numpy.{FLOAT.__name__} and numpy.{COMPLEX.__name__} precision.")

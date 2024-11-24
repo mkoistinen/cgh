@@ -3,13 +3,10 @@ from enum import Enum
 from pathlib import Path
 import sys
 
-from . import get_numpy_precision_types
+from . import FLOAT, COMPLEX
 from .hologram import HologramParameters, compute_hologram
 from .image import create_hologram_image
-from .utilities import show_grid_memory_requirements
-
-
-FLOAT, COMPLEX = get_numpy_precision_types()
+from .utilities import show_grid_memory_requirements, Timer
 
 
 class NormalizationMethod(str, Enum):
@@ -41,9 +38,9 @@ def parse_args() -> argparse.Namespace:
 
     # Required arguments
     parser.add_argument(
-        'stl_path',
+        '--stl_path',
         type=Path,
-        default="cgh/stls/dodecaherdon.stl",
+        default="cgh/stls/dodecahedron.stl",
         help='Path to input STL file'
     )
 
@@ -51,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '-o', '--output',
         type=Path,
-        required=True,
+        default="hologram.png",
         help='Output file path (extension determines format)'
     )
 
@@ -78,23 +75,23 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--plate-resolution',
+        '--plate-resolution', '-r',
         type=float,
-        default=11.811,
+        default=11.811,  # 300 dpi
         help='Recording resolution in dots per millimeter'
     )
 
     parser.add_argument(
         '--light-source-distance',
         type=float,
-        default=500.0,
+        default=100.0,
         help='Distance of coherent source in millimeters'
     )
 
     parser.add_argument(
         '--object-distance',
         type=float,
-        default=50.0,
+        default=100.0,
         help='Distance of object behind plate in millimeters'
     )
 
@@ -107,7 +104,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--subdivision-factor',
+        '--subdivision-factor', '-s',
         type=int,
         default=4,
         help='Number of times to subdivide triangles'
@@ -134,6 +131,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     """Main function with command line interface."""
+    print(f"Using numpy.{FLOAT.__name__} and numpy.{COMPLEX.__name__} precision.")
     args = parse_args()
 
     # Create parameter object from arguments
@@ -159,7 +157,8 @@ def main() -> None:
 
         # Simulate hologram
         print(f"Processing STL file: {args.stl_path}")
-        interference_pattern, phase = compute_hologram(args.stl_path, params)
+        with Timer("Computation required"):
+            interference_pattern, phase = compute_hologram(args.stl_path, params)
 
         # Save output
         print(f"Saving hologram to: {args.output}")

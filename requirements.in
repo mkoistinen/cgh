@@ -1,0 +1,7 @@
+numpy>=1.24.0  # For high precision float64 support
+numpy-stl>=3.0.0  # For STL file handling
+pytest>=7.0.0  # For testing framework
+pillow>=10.0.0  # For image handling
+pytest
+scipy
+matplotlib

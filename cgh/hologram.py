@@ -1,7 +1,7 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
-from math import sqrt, cos, sin
+import math
 from multiprocessing import cpu_count
 
 from numba import cuda
@@ -57,7 +57,7 @@ def compute_object_field_cuda(
             dx = np.float32(x - px)
             dy = np.float32(y - py)
             dz = np.float32(pz + object_distance)
-            R = sqrt(dx**2 + dy**2 + dz**2)
+            R = math.sqrt(dx**2 + dy**2 + dz**2)
 
             if R > 1e-6:  # Avoid division by zero
                 # Compute Lambertian scattering
@@ -75,7 +75,7 @@ def compute_object_field_cuda(
                 if cos_angle > 0:
                     # Accumulate contribution
                     phase = np.float32(k * R)
-                    contribution += (cos_angle / R) * (cos(phase) + 1j * sin(phase))
+                    contribution += (cos_angle / R) * (math.cos(phase) + 1j * math.sin(phase))
 
         # Assign contribution to output array
         object_field[i, j] = contribution
@@ -94,7 +94,9 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     Y_device = cuda.to_device(Y)
     points_device = cuda.to_device(np.array(points, dtype=np.float32))
     normals_device = cuda.to_device(np.array(normals, dtype=np.float32))
-    object_field_device = cuda.device_array(X.shape, dtype=np.complex64)
+    # object_field_device = cuda.device_array_like(X)
+    object_field_device = cuda.device_array(X.shape, dtype=np.complex64)  # Corrected
+
 
     # Define CUDA grid and block sizes
     threads_per_block = (16, 16)
@@ -303,74 +305,6 @@ def compute_reference_field(params: HologramParameters) -> npt.NDArray:
     R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=np.float32)
     reference_field = np.exp(1j * k * R) / R
     return reference_field
-
-
-def compute_hologram_old(
-    stl_path: Path,
-    params: HologramParameters
-) -> tuple[npt.NDArray, npt.NDArray]:
-    """
-    Compute a Transmission Hologram.
-
-    Parameters
-    ----------
-    stl_path : Path
-        Path to STL file.
-    params : HologramParameters
-        Simulation parameters.
-
-    Returns
-    -------
-    npt.NDArray[FloatType]
-        Final interference pattern.
-    """
-    # Generate grid
-    X, Y = create_grid(
-        params.plate_size,
-        params.plate_resolution,
-        indexing="xy",
-        dtype=np.float32,
-    )
-
-    # Load and process mesh
-    mesh_data = load_and_transform_mesh(
-        stl_path,
-        scale=params.scale_factor,
-        rotation=params.rotation_factors,
-        translation=params.translation_factors,
-        dtype=params.dtype
-    )
-    points, normals = process_mesh(mesh_data, params.subdivision_factor)
-
-    # Compute wave fields
-    if is_cuda_available():
-        object_field = compute_object_field_with_cuda(points, normals, params)
-    else:
-        object_field = compute_object_field_cpu(points, normals, params)
-    reference_field = compute_reference_field(params)
-
-    scaling_factor = np.abs(object_field).max() / np.abs(reference_field).max() * 0.5
-    reference_field *= scaling_factor
-
-    # Compute interference
-    combined_field = object_field + reference_field
-    phase = np.angle(combined_field)
-    interference_pattern = np.abs(combined_field) ** 2
-
-    # Visualize the reference pattern
-    if DEBUG:
-        for field_type, field in {
-            "Object Wave": object_field,
-            "Reference Wave": reference_field,
-            "Interference Pattern": combined_field
-        }.items():
-            amplitude = np.abs(field)
-            phase = np.angle(field)
-            print(f"{field_type} Amplitude: min={amplitude.min()}, max={amplitude.max()}")
-            print(f"{field_type} Phase: min={phase.min()}, max={phase.max()}")
-            visualize_wave(field, params)
-
-    return interference_pattern, phase
 
 
 def compute_hologram(

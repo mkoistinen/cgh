@@ -21,6 +21,10 @@ class HologramParameters:
         Distance of coherent source in millimeters, use 0.0 for planar wave.
     object_distance : float
         Distance of object behind plate in millimeters
+    rotation_factors : tuple[float, float, float], default (0., 0., 0.)
+        Rotational transform in degrees about the X, Y, and Z axis.
+    translation_factors : tuple[float, float, float], default (0., 0., 0.)
+        Translation transform in mm for the X, Y, and Z axis.
     scale_factor : float
         Scale factor for STL object
     subdivision_factor : int
@@ -35,18 +39,19 @@ class HologramParameters:
     plate_resolution: float = 23.622  # dots per mm / 600 dpi
     light_source_distance: float = 100.0  # mm
     object_distance: float = 50.0  # mm behind plate
+    rotation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
+    translation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     scale_factor: float = 12.0
     subdivision_factor: int = 4
-    # TODO: Rename this parameter to something more useful and make sure it is used everywhere.
-    dtype: type = np.float64
-    complex_dtype: type = np.complex128
+    dtype: type = np.float32
+    complex_dtype: type = np.complex64
 
 
 class Point3D(NamedTuple):
     """3D point representation."""
-    x: np.float64
-    y: np.float64
-    z: np.float64
+    x: np.float32
+    y: np.float32
+    z: np.float32
 
 
 class Triangle(NamedTuple):

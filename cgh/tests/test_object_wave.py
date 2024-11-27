@@ -23,8 +23,8 @@ class TestObjectWave:
         corner_amp = np.abs(obj_wave[0, 0])
 
         # Calculate distances exactly as done in compute_fresnel_wave_field
-        x = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float64)
-        y = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float64)
+        x = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float32)
+        y = np.linspace(-test_parameters.plate_size / 2, test_parameters.plate_size / 2, resolution, dtype=np.float32)
         X, Y = np.meshgrid(x, y)
 
         # Calculate center distance
@@ -32,7 +32,7 @@ class TestObjectWave:
             (X[center_idx, center_idx] - points[0].x) ** 2 +
             (Y[center_idx, center_idx] - points[0].y) ** 2 +
             (points[0].z + test_parameters.object_distance)**2,
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
         # Calculate corner distance
@@ -40,7 +40,7 @@ class TestObjectWave:
             (X[0, 0] - points[0].x) ** 2 +
             (Y[0, 0] - points[0].y) ** 2 +
             (points[0].z + test_parameters.object_distance) ** 2,
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
         expected_ratio = r_center / r_corner

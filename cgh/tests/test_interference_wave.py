@@ -15,7 +15,7 @@ from cgh.tests.conftest import FLOAT_TYPES, COMPLEX_TYPES
 from cgh.tests.utilities import generate_test_points_normals
 from cgh.utilities import (
     create_grid,
-    load_and_scale_mesh,
+    load_and_transform_mesh,
     process_mesh,
 )
 
@@ -33,7 +33,7 @@ class TestInterferenceWave:
         self,
         object_wave: np.ndarray,
         reference_wave: np.ndarray,
-        dtype: type = np.float64,
+        dtype: type = np.float32,
     ) -> np.ndarray:
         print(f"{len(object_wave)=}, {len(reference_wave)=}")
         combined_wave = object_wave + reference_wave
@@ -114,15 +114,15 @@ class TestInterferenceWave:
         interference_pattern = self.compute_interference_pattern(object_wave, reference_wave)
 
         # Compute energies with consistent dtype
-        object_energy = np.sum(np.abs(object_wave)**2, dtype=np.float64)
-        reference_energy = np.sum(np.abs(reference_wave)**2, dtype=np.float64)
-        combined_energy = np.sum(np.abs(interference_pattern), dtype=np.float64)
+        object_energy = np.sum(np.abs(object_wave)**2, dtype=np.float32)
+        reference_energy = np.sum(np.abs(reference_wave)**2, dtype=np.float32)
+        combined_energy = np.sum(np.abs(interference_pattern), dtype=np.float32)
 
         # Expected combined energy
         expected_combined_energy = (
             object_energy +
             reference_energy +
-            2 * np.sum(np.real(object_wave * np.conj(reference_wave)), dtype=np.float64)
+            2 * np.sum(np.real(object_wave * np.conj(reference_wave)), dtype=np.float32)
         )
 
         # Debugging output
@@ -295,12 +295,13 @@ class TestInterferenceWave:
         X, Y = create_grid(params.plate_size, num_points, indexing="xy", dtype=params.dtype)
 
         # Symmetric object wave
-        obj_mesh = load_and_scale_mesh("cgh/stls/symmetric_object.stl", scale_factor=10.0, dtype=params.dtype)
-        points, normals = process_mesh(obj_mesh, params.subdivision_factor)
-        object_wave = compute_object_field(
-            points=points, normals=normals, params=params,
-            num_processes=2
+        obj_mesh = load_and_transform_mesh(
+            "cgh/stls/symmetric_object.stl",
+            scale=10.0,
+            dtype=params.dtype
         )
+        points, normals = process_mesh(obj_mesh, params.subdivision_factor)
+        object_wave = compute_object_field(points=points, normals=normals, params=params)
 
         # Symmetric reference wave
         reference_wave = compute_reference_field(params)

@@ -4,9 +4,12 @@ from pathlib import Path
 import sys
 
 import numpy as np
+from PIL import Image
+
 
 from .hologram import HologramParameters, compute_hologram
 from .image import create_hologram_image
+from .reconstruction import reconstruct_image_from_png
 from .utilities import show_grid_memory_requirements, Timer
 
 
@@ -92,7 +95,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--object-distance',
         type=float,
-        default=100.0,
+        default=5.0,
         help='Distance of object behind plate in millimeters'
     )
 
@@ -100,8 +103,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--scale-factor',
         type=float,
-        default=12.0,
+        default=5.0,
         help='Scale factor for STL object'
+    )
+
+    parser.add_argument(
+        '--rotation-factors',
+        type=float,
+        default=(0.0, 0.0, 0.0),
+        nargs=3,
+        help='Rotational transform in degrees for X, Y, and Z'
+    )
+
+    parser.add_argument(
+        '--translation-factors',
+        type=float,
+        default=(0.0, 0.0, 0.0),
+        nargs=3,
+        help='Rotational transform in degrees for X, Y, and Z'
     )
 
     parser.add_argument(
@@ -147,8 +166,8 @@ def main() -> None:
             dtype = np.float64
             complex_dtype = np.complex128
     else:
-        dtype = np.float64
-        complex_dtype = np.complex128
+        dtype = np.float32
+        complex_dtype = np.complex64
 
     print(f"Using numpy.{dtype.__name__} and numpy.{complex_dtype.__name__} precision.")
 
@@ -160,6 +179,8 @@ def main() -> None:
         light_source_distance=args.light_source_distance,
         object_distance=args.object_distance,
         scale_factor=args.scale_factor,
+        rotation_factors=args.rotation_factors,
+        translation_factors=args.translation_factors,
         subdivision_factor=args.subdivision_factor,
         dtype=dtype,
         complex_dtype=complex_dtype,
@@ -190,17 +211,26 @@ def main() -> None:
             normalization_method=args.normalization
         )
 
-        if args.debug:
-            # Save additional debug information
-            debug_dir = args.output.parent / 'debug'
-            debug_dir.mkdir(exist_ok=True)
+        # Show an image reconstructed from the hologram
+        reconstruction = reconstruct_image_from_png(
+            png_path=args.output,
+            wavelength=params.wavelength,
+            plate_resolution=params.plate_resolution,
+            reconstruction_distance=20.0
+        )
+        reconstruction = 255 * (reconstruction - np.min(reconstruction)) / (np.max(reconstruction) - np.min(reconstruction))
+        reconstruction = reconstruction.astype(np.uint8)
+        reconstruction_img = Image.fromarray(reconstruction, mode='L')
+        reconstruction_img.save("reconstruction.png", format='PNG')
 
-            # Save parameters
-            with open(debug_dir / 'parameters.txt', 'w') as f:
-                for key, value in vars(args).items():
-                    f.write(f"{key}: {value}\n")
+        # # Save additional debug information
+        # debug_dir = args.output.parent / 'debug'
+        # debug_dir.mkdir(exist_ok=True)
 
-            # Could add more debug outputs here if needed
+        # # Save parameters
+        # with open(debug_dir / 'parameters.txt', 'w') as f:
+        #     for key, value in vars(args).items():
+        #         f.write(f"{key}: {value}\n")
 
         print("Processing complete!")
 

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Tuple
+import typing as t
 import warnings
 
 import matplotlib.pyplot as plt
@@ -36,35 +36,95 @@ class Timer:
             print(self._msg, self._duration)
 
 
-def load_and_scale_mesh(
+def load_and_transform_mesh(
     stl_path: Path,
-    scale_factor: float,
-    dtype: float = np.float64,
-) -> npt.NDArray[np.float64]:
+    *,
+    rotation: t.Optional[tuple[np.float32, np.float32, np.float32]] = None,
+    translation: tuple[np.float32, np.float32, np.float32] = None,
+    scale: float,
+    dtype: float = np.float32,
+) -> npt.NDArray[np.float32]:
     """
-    Load and scale an STL mesh.
+    Load, scale, rotate (in degrees), and translate an STL mesh.
 
     Parameters
     ----------
     stl_path : Path
-        Path to STL file
-    scale_factor : float
-        Scale factor to apply to mesh
-    dtype : type, default np.float64
+        Path to STL file.
+    rotation: tuple[np.float32, np.float32, np.float32]
+        Rotation angles (in degrees) about the X, Y, and Z axes, respectively.
+    translation: tuple[np.float32, np.float32, np.float32]
+        Translation offsets along the X, Y, and Z axes, respectively.
+    scale : float
+        Scale factor to apply to mesh about the object's local origin.
+    dtype : type, default np.float32
         The float precision to use.
 
     Returns
     -------
-    npt.NDArray[np.FloatType]
-        Scaled mesh vertices
+    npt.NDArray[np.float32]
+        Transformed mesh vertices.
     """
+    if rotation is None:
+        rotation = 0., 0., 0.
+
+    if translation is None:
+        translation = 0., 0., 0.
+
+    # Load the mesh
     stl_mesh = mesh.Mesh.from_file(str(stl_path))
-    return dtype(stl_mesh.vectors) * scale_factor
+    vertices = dtype(stl_mesh.vectors.reshape(-1, 3))  # Flatten triangles into vertices
+
+    # Scale the vertices
+    vertices *= scale
+
+    # Rotation matrix
+    def rotation_matrix(rx_deg, ry_deg, rz_deg):
+        # Convert degrees to radians
+        rx = np.radians(rx_deg)
+        ry = np.radians(ry_deg)
+        rz = np.radians(rz_deg)
+
+        # Rotation about X-axis
+        Rx = np.array([
+            [1, 0, 0],
+            [0, np.cos(rx), -np.sin(rx)],
+            [0, np.sin(rx), np.cos(rx)],
+        ], dtype=dtype)
+
+        # Rotation about Y-axis
+        Ry = np.array([
+            [np.cos(ry), 0, np.sin(ry)],
+            [0, 1, 0],
+            [-np.sin(ry), 0, np.cos(ry)],
+        ], dtype=dtype)
+
+        # Rotation about Z-axis
+        Rz = np.array([
+            [np.cos(rz), -np.sin(rz), 0],
+            [np.sin(rz), np.cos(rz), 0],
+            [0, 0, 1],
+        ], dtype=dtype)
+
+        return Rz @ Ry @ Rx
+
+    # Apply rotation
+    R = rotation_matrix(*rotation)
+    vertices = vertices @ R.T
+
+    # Apply translation
+    translation_vector = np.array(translation, dtype=dtype)
+    vertices += translation_vector
+
+    # Reshape back into triangular form
+    transformed_vectors = vertices.reshape(-1, 3, 3)
+
+    return transformed_vectors
 
 
 def compute_triangle_normal(
     triangle: Triangle,
-    dtype: float = np.float64
+    dtype: float = np.float32
 ) -> Point3D:
     """
     Compute normal vector for a triangle.
@@ -73,7 +133,7 @@ def compute_triangle_normal(
     ----------
     triangle : Triangle
         Input triangle
-    dtype : type, default np.float64
+    dtype : type, default np.float32
         The float precision to use.
 
     Returns
@@ -97,10 +157,10 @@ def compute_triangle_normal(
 
 
 def process_mesh(
-    mesh_data: npt.NDArray[np.float64],
+    mesh_data: npt.NDArray[np.float32],
     subdivision_factor: int,
-    dtype: type = np.float64,
-) -> Tuple[list[Point3D], list[Point3D]]:
+    dtype: type = np.float32,
+) -> tuple[list[Point3D], list[Point3D]]:
     """
     Process mesh data into points and normals.
 
@@ -110,7 +170,7 @@ def process_mesh(
         Raw mesh data
     subdivision_factor : int
         Subdivision factor
-    dtype : type, default np.float64
+    dtype : type, default np.float32
         The float precision to use.
 
     Returns
@@ -142,7 +202,7 @@ def process_mesh(
             # Compute centroid
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
-                centroid = Point3D(*(sum(np.float64(p) for p in sub_triangle) / 3))
+                centroid = Point3D(*(sum(np.float32(p) for p in sub_triangle) / 3))
             points.append(centroid)
             normals.append(normal)
 
@@ -154,8 +214,8 @@ def create_grid(
     size: float,
     resolution: float,
     indexing: str = 'ij',
-    dtype: type = np.float64,
-) -> Tuple[np.ndarray, np.ndarray]:
+    dtype: type = np.float32,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a 2D grid of coordinates centered at (0, 0).
 
@@ -167,12 +227,12 @@ def create_grid(
         Number of dots per mm (floating-point).
     indexing : str
         Meshgrid indexing ('ij' for row-major or 'xy' for Cartesian).
-    dtype : np.dtype, default np.float64
+    dtype : np.dtype, default np.float32
         The precision float type for the grid.
 
     Returns
     -------
-    Tuple[np.ndarray, np.ndarray]
+    tuple[np.ndarray, np.ndarray]
         Meshgrid for X and Y coordinates.
     """
     # Calculate grid points
@@ -189,7 +249,7 @@ def create_grid(
 def subdivide_triangle(
     triangle: Triangle,
     levels: int,
-    dtype: float = np.float64,
+    dtype: float = np.float32,
 ) -> list[Triangle]:
     """
     Recursively subdivide a triangle.

@@ -53,13 +53,13 @@ def create_hologram_image(
     to maintain maximum precision for photographic reproduction.
     """
 
-    phase_normalized = (2 ** 16 - 1) * (phase + np.pi) / (2 * np.pi)  # Map [-pi, pi] to [0, 65535]
-    phase_data = phase_normalized.astype(np.uint16)
-    phase_img = Image.fromarray(phase_data, mode='I;16')
+    phase_normalized = (2 ** 8 - 1) * (phase + np.pi) / (2 * np.pi)  # Map [-pi, pi] to [0, 255]
+    phase_data = phase_normalized.astype(np.uint8)
+    phase_img = Image.fromarray(phase_data, mode='L')
     phase_img.save("hologram_phase.png", format='PNG')
 
     # Ensure we're working with 64-bit precision
-    pattern = np.float64(interference_pattern)
+    pattern = np.float32(interference_pattern)
 
     # Normalization
     if normalization_method == NormalizationMethod.MINMAX:
@@ -72,7 +72,7 @@ def create_hologram_image(
 
     elif normalization_method == NormalizationMethod.LOG:
         # Add small constant to avoid log(0)
-        eps = np.finfo(np.float64).tiny
+        eps = np.finfo(np.float32).tiny
         normalized = np.log1p(pattern) / np.log1p(np.max(pattern) + eps)
 
     elif normalization_method == NormalizationMethod.SIGMOID:
@@ -88,6 +88,7 @@ def create_hologram_image(
             f"Unsupported normalization method: {normalization_method}")
 
     # Output handling
+    output_type = OutputType.PREVIEW
     if output_type == OutputType.PREVIEW:
         # 16-bit PNG
         scaled = (normalized * 65535).astype(np.uint16)

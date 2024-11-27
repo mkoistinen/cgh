@@ -210,7 +210,7 @@ def process_mesh(
                 points.append(centroid)
                 normals.append(normal)
 
-    print(f"Processing mesh ({len(points):,d}) required: {timer.duration}")
+    print(f"Subdividing mesh into {len(points):,d} points required: {timer.duration}")
     return points, normals
 
 

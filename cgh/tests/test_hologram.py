@@ -25,7 +25,7 @@ def test_mesh_processing_accuracy():
     for level in subdivision_levels:
         subdivided = subdivide_triangle(triangle, level)
         centroids = [
-            Point3D(*(sum(np.float64(v) for v in tri) / 3)) for tri in subdivided
+            Point3D(*(sum(np.float32(v) for v in tri) / 3)) for tri in subdivided
         ]
         print(f"Subdivision Level {level}:")
         for centroid in centroids[:5]:  # Print first 5 centroids
@@ -78,7 +78,7 @@ def test_precision_impact(dtype, test_parameters, plate_resolution, light_source
     )
 
 
-def generate_symmetric_interference(resolution: int, dtype=np.float64) -> np.ndarray:
+def generate_symmetric_interference(resolution: int, dtype=np.float32) -> np.ndarray:
     """Generate a perfectly symmetric interference pattern for testing."""
     x = np.linspace(-1, 1, resolution, dtype=dtype)
     y = np.linspace(-1, 1, resolution, dtype=dtype)
@@ -87,7 +87,7 @@ def generate_symmetric_interference(resolution: int, dtype=np.float64) -> np.nda
     return Z
 
 
-def generate_symmetric_waves(resolution: int, dtype=np.complex128) -> tuple[np.ndarray, np.ndarray]:
+def generate_symmetric_waves(resolution: int, dtype=np.complex64) -> tuple[np.ndarray, np.ndarray]:
     """
     Generate symmetric object and reference waves.
     """

@@ -21,7 +21,7 @@ from .types import HologramParameters, Point3D
 from .utilities import (
     create_grid,
     is_cuda_available,
-    load_and_scale_mesh,
+    load_and_transform_mesh,
     process_mesh,
     visualize_wave,
 )
@@ -114,7 +114,7 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     return object_field
 
 
-def compute_object_field_with_cuda(points, normals, params):
+def compute_object_field_cuda_device(points, normals, params):
     """
     Compute object field using CUDA acceleration.
     """
@@ -132,41 +132,13 @@ def compute_object_field_with_cuda(points, normals, params):
     return object_field
 
 
-def compute_reference_field(params: HologramParameters) -> npt.NDArray:
-    """
-    Compute a reference wave based on the light source distance.
-
-    If params.light_source_distance == 0.0, treat it as a planar wave, which is
-    approximated as coming from an "infinitely" far point light source.
-    """
-    X, Y = create_grid(
-        params.plate_size,
-        params.plate_resolution,
-        indexing="xy",
-        dtype=np.float32,
-    )
-
-    k = 2 * np.pi / params.wavelength
-
-    # Handle planar wave case by setting an effective light source distance
-    if params.light_source_distance == 0.0:
-        light_source_distance = 1.5e14  # Roughly the distance to the Sun.
-    else:
-        light_source_distance = params.light_source_distance
-
-    # Compute spherical wave
-    R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=np.float32)
-    reference_field = np.exp(1j * k * R) / R
-    return reference_field
-
-
 def compute_chunk_field(
     points_chunk: list[Point3D],
     normals_chunk: list[Point3D],
     X: np.ndarray,
     Y: np.ndarray,
     params: HologramParameters,
-    is_chunked: True,
+    is_chunked: bool = True,
 ) -> npt.NDArray:
     """
     Compute the wave field contribution for a chunk of points and normals.
@@ -203,7 +175,7 @@ def compute_chunk_field(
             dz = point.z + params.object_distance
 
             # Radial distance
-            R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=np.float32)
+            R = np.sqrt(dx**2 + dy**2 + dz**2)
 
             # Full complex wave contribution
             wave_contribution = (cos_angle / R) * np.exp(1j * k * R)
@@ -290,7 +262,50 @@ def compute_object_field_cpu(
     return wave_field
 
 
-def compute_hologram(
+def compute_object_field(
+    points: list[Point3D],
+    normals: list[Point3D],
+    params: HologramParameters,
+    num_processes: int = None
+):
+    """
+    Use the best method to compute the object field.
+    """
+    if is_cuda_available():
+        return compute_object_field_cuda_device(points, normals, params)
+    else:
+        return compute_object_field_cpu(points, normals, params, num_processes)
+
+
+def compute_reference_field(params: HologramParameters) -> npt.NDArray:
+    """
+    Compute a reference wave based on the light source distance.
+
+    If params.light_source_distance == 0.0, treat it as a planar wave, which is
+    approximated as coming from an "infinitely" far point light source.
+    """
+    X, Y = create_grid(
+        params.plate_size,
+        params.plate_resolution,
+        indexing="xy",
+        dtype=np.float32,
+    )
+
+    k = 2 * np.pi / params.wavelength
+
+    # Handle planar wave case by setting an effective light source distance
+    if params.light_source_distance == 0.0:
+        light_source_distance = 1.5e14  # Roughly the distance to the Sun.
+    else:
+        light_source_distance = params.light_source_distance
+
+    # Compute spherical wave
+    R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=np.float32)
+    reference_field = np.exp(1j * k * R) / R
+    return reference_field
+
+
+def compute_hologram_old(
     stl_path: Path,
     params: HologramParameters
 ) -> tuple[npt.NDArray, npt.NDArray]:
@@ -318,7 +333,13 @@ def compute_hologram(
     )
 
     # Load and process mesh
-    mesh_data = load_and_scale_mesh(stl_path, params.scale_factor)
+    mesh_data = load_and_transform_mesh(
+        stl_path,
+        scale=params.scale_factor,
+        rotation=params.rotation_factors,
+        translation=params.translation_factors,
+        dtype=params.dtype
+    )
     points, normals = process_mesh(mesh_data, params.subdivision_factor)
 
     # Compute wave fields
@@ -348,5 +369,73 @@ def compute_hologram(
             print(f"{field_type} Amplitude: min={amplitude.min()}, max={amplitude.max()}")
             print(f"{field_type} Phase: min={phase.min()}, max={phase.max()}")
             visualize_wave(field, params)
+
+    return interference_pattern, phase
+
+
+def compute_hologram(
+    stl_path: Path,
+    params: HologramParameters
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """
+    Compute a Transmission Hologram using the expanded intensity formula.
+
+    Parameters
+    ----------
+    stl_path : Path
+        Path to STL file.
+    params : HologramParameters
+        Simulation parameters.
+
+    Returns
+    -------
+    tuple[npt.NDArray, npt.NDArray]
+        Interference pattern (intensity) and phase information.
+    """
+    # Generate grid
+    X, Y = create_grid(
+        params.plate_size,
+        params.plate_resolution,
+        indexing="xy",
+        dtype=params.dtype
+    )
+
+    # Load and process mesh
+    mesh_data = load_and_transform_mesh(
+        stl_path,
+        scale=params.scale_factor,
+        rotation=params.rotation_factors,
+        translation=params.translation_factors,
+        dtype=params.dtype
+    )
+    points, normals = process_mesh(mesh_data, params.subdivision_factor)
+
+    # Compute wave fields
+    object_field = compute_object_field(points, normals, params)
+    reference_field = compute_reference_field(params)
+
+    # Compute individual intensity terms
+    object_intensity = np.abs(object_field) ** 2  # |U_object|^2
+    reference_intensity = np.abs(reference_field) ** 2  # |U_reference|^2
+
+    # Compute the interference term
+    interference_term = 2 * np.real(object_field * np.conj(reference_field))  # 2 Re(U_object * U_reference*)
+
+    # Combine all terms to form the hologram intensity
+    interference_pattern = object_intensity + reference_intensity + interference_term
+
+    # Compute phase for visualization (optional)
+    combined_field = object_field + reference_field
+    phase = np.angle(combined_field)
+
+    # Debugging and visualization
+    if DEBUG:
+        print(f"Object Wave Intensity: min={object_intensity.min()}, max={object_intensity.max()}")
+        print(f"Reference Wave Intensity: min={reference_intensity.min()}, max={reference_intensity.max()}")
+        print(f"Interference Term: min={interference_term.min()}, max={interference_term.max()}")
+        print(f"Interference Pattern: min={interference_pattern.min()}, max={interference_pattern.max()}")
+        visualize_wave(object_field, params, title="Object Wave")
+        visualize_wave(reference_field, params, title="Reference Wave")
+        visualize_wave(combined_field, params, title="Combined Wave")
 
     return interference_pattern, phase

@@ -23,17 +23,20 @@ class Timer:
         If non-empty, prints the string on exit followed by the duration.
     """
 
-    def __init__(self, msg=""):
+    def __init__(self, msg=""):  # type: ignore reportMissingSuperCall
         self._msg = msg
+        self._start = None
+        self._end = None
+        self.duration = timedelta(0)
 
     def __enter__(self) -> "Timer":
         self._start = datetime.now()
         return self
 
     def __exit__(self, *args):
-        self._duration: timedelta = datetime.now() - self._start
+        self.duration: timedelta = datetime.now() - self._start
         if self._msg:
-            print(self._msg, self._duration)
+            print(self._msg, self.duration)
 
 
 def load_and_transform_mesh(
@@ -162,7 +165,7 @@ def process_mesh(
     dtype: type = np.float32,
 ) -> tuple[list[Point3D], list[Point3D]]:
     """
-    Process mesh data into points and normals.
+    Process mesh data into centroids (points) and normals.
 
     Parameters
     ----------
@@ -176,36 +179,38 @@ def process_mesh(
     Returns
     -------
     tuple[list[Point3D], list[Point3D]]
-        Points and their corresponding normals
+        Triangle centroids (points) and their corresponding normals
     """
-    points = []
-    normals = []
+    with Timer() as timer:
+        points = []
+        normals = []
 
-    for triangle_vertices in mesh_data:
-        triangle = Triangle(
-            Point3D(*triangle_vertices[0]),
-            Point3D(*triangle_vertices[1]),
-            Point3D(*triangle_vertices[2]),
-        )
-        normal = compute_triangle_normal(triangle, dtype=dtype)
+        for triangle_vertices in mesh_data:
+            triangle = Triangle(
+                Point3D(*triangle_vertices[0]),
+                Point3D(*triangle_vertices[1]),
+                Point3D(*triangle_vertices[2]),
+            )
+            normal = compute_triangle_normal(triangle, dtype=dtype)
 
-        # Skip triangles with invalid normals
-        if np.all(np.array(normal, dtype=dtype) == 0):
-            continue
+            # Skip triangles with invalid normals
+            if np.all(np.array(normal, dtype=dtype) == 0):
+                continue
 
-        subdivided = subdivide_triangle(
-            triangle,
-            subdivision_factor,
-            dtype=dtype,
-        )
-        for sub_triangle in subdivided:
-            # Compute centroid
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
-                centroid = Point3D(*(sum(np.float32(p) for p in sub_triangle) / 3))
-            points.append(centroid)
-            normals.append(normal)
+            subdivided = subdivide_triangle(
+                triangle,
+                subdivision_factor,
+                dtype=dtype,
+            )
+            for sub_triangle in subdivided:
+                # Compute centroid
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", np.exceptions.ComplexWarning)
+                    centroid = Point3D(*(sum(np.float32(p) for p in sub_triangle) / 3))
+                points.append(centroid)
+                normals.append(normal)
 
+    print(f"Processing mesh ({len(points):,d}) required: {timer.duration}")
     return points, normals
 
 

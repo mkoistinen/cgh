@@ -1,7 +1,10 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import nullcontext
 from functools import partial
+from math import sqrt, cos, sin
 from multiprocessing import cpu_count
+
+from numba import cuda
 import numpy as np
 import numpy.typing as npt
 from pathlib import Path
@@ -17,6 +20,7 @@ from rich.progress import (
 from .types import HologramParameters, Point3D
 from .utilities import (
     create_grid,
+    is_cuda_available,
     load_and_scale_mesh,
     process_mesh,
     visualize_wave,
@@ -24,6 +28,108 @@ from .utilities import (
 
 
 DEBUG = False
+
+
+@cuda.jit
+def compute_object_field_cuda(
+    X, Y, points, normals, object_field, k, wavelength, object_distance
+):
+    """
+    CUDA kernel to compute the object field contributions.
+    Each thread computes the contribution for a single grid point.
+    """
+    i, j = cuda.grid(2)
+
+    # Ensure thread indices are within bounds
+    if i < X.shape[0] and j < X.shape[1]:
+        x = X[i, j]
+        y = Y[i, j]
+
+        # Initialize complex contribution
+        contribution = np.complex64(0.0 + 0.0j)
+
+        for p in range(points.shape[0]):
+            # Extract point and normal vectors
+            px, py, pz = points[p, 0], points[p, 1], points[p, 2]
+            nx, ny, nz = normals[p, 0], normals[p, 1], normals[p, 2]
+
+            # Compute vector from grid point to object point
+            dx = np.float32(x - px)
+            dy = np.float32(y - py)
+            dz = np.float32(pz + object_distance)
+            R = sqrt(dx**2 + dy**2 + dz**2)
+
+            if R > 1e-6:  # Avoid division by zero
+                # Compute Lambertian scattering
+                view_vector = cuda.local.array(3, dtype=np.float32)
+                view_vector[0], view_vector[1], view_vector[2] = -dx / R, -dy / R, -dz / R
+                normal_vector = cuda.local.array(3, dtype=np.float32)
+                normal_vector[0], normal_vector[1], normal_vector[2] = nx, ny, nz
+
+                cos_angle = abs(
+                    view_vector[0] * normal_vector[0] +
+                    view_vector[1] * normal_vector[1] +
+                    view_vector[2] * normal_vector[2]
+                )
+
+                if cos_angle > 0:
+                    # Accumulate contribution
+                    phase = np.float32(k * R)
+                    contribution += (cos_angle / R) * (cos(phase) + 1j * sin(phase))
+
+        # Assign contribution to output array
+        object_field[i, j] = contribution
+
+
+def compute_object_field_cuda_driver(points, normals, X, Y, params):
+    """
+    Driver function to launch the CUDA kernel for object field computation.
+    """
+    # Parameters
+    k = 2 * np.pi / params.wavelength
+    object_distance = params.object_distance
+
+    # Transfer data to GPU
+    X_device = cuda.to_device(X)
+    Y_device = cuda.to_device(Y)
+    points_device = cuda.to_device(np.array(points, dtype=np.float32))
+    normals_device = cuda.to_device(np.array(normals, dtype=np.float32))
+    object_field_device = cuda.device_array(X.shape, dtype=np.complex64)
+
+    # Define CUDA grid and block sizes
+    threads_per_block = (16, 16)
+    blocks_per_grid_x = (X.shape[0] + threads_per_block[0] - 1) // threads_per_block[0]
+    blocks_per_grid_y = (X.shape[1] + threads_per_block[1] - 1) // threads_per_block[1]
+    blocks_per_grid = (blocks_per_grid_x, blocks_per_grid_y)
+
+    # Launch CUDA kernel
+    compute_object_field_cuda[blocks_per_grid, threads_per_block](
+        X_device, Y_device, points_device, normals_device,
+        object_field_device, k, params.wavelength, object_distance
+    )
+
+    # Transfer result back to CPU
+    object_field = object_field_device.copy_to_host()
+
+    return object_field
+
+
+def compute_object_field_with_cuda(points, normals, params):
+    """
+    Compute object field using CUDA acceleration.
+    """
+    # Generate symmetric grid
+    X, Y = create_grid(
+        params.plate_size,
+        params.plate_resolution,
+        indexing="xy",
+        dtype=np.float32,
+    )
+
+    # Call CUDA driver function
+    object_field = compute_object_field_cuda_driver(points, normals, X, Y, params)
+
+    return object_field
 
 
 def compute_reference_field(params: HologramParameters) -> npt.NDArray:
@@ -37,7 +143,7 @@ def compute_reference_field(params: HologramParameters) -> npt.NDArray:
         params.plate_size,
         params.plate_resolution,
         indexing="xy",
-        dtype=params.dtype,
+        dtype=np.float32,
     )
 
     k = 2 * np.pi / params.wavelength
@@ -49,7 +155,7 @@ def compute_reference_field(params: HologramParameters) -> npt.NDArray:
         light_source_distance = params.light_source_distance
 
     # Compute spherical wave
-    R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=params.dtype)
+    R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=np.float32)
     reference_field = np.exp(1j * k * R) / R
     return reference_field
 
@@ -65,8 +171,8 @@ def compute_chunk_field(
     """
     Compute the wave field contribution for a chunk of points and normals.
     """
-    wave_field_chunk = np.zeros_like(X, dtype=params.complex_dtype)
-    view_vector = np.array([0, 0, -1], dtype=params.dtype)
+    wave_field_chunk = np.zeros_like(X, dtype=np.complex64)
+    view_vector = np.array([0, 0, -1], dtype=np.float32)
     k = 2 * np.pi / params.wavelength
 
     if is_chunked:
@@ -86,7 +192,7 @@ def compute_chunk_field(
         for point, normal in zip(points_chunk, normals_chunk):
             # Lambert scattering
             cos_angle = np.abs(
-                np.dot(np.array(normal, dtype=params.dtype), view_vector),
+                np.dot(np.array(normal, dtype=np.float32), view_vector),
             )
             if cos_angle <= 0:
                 continue
@@ -97,7 +203,7 @@ def compute_chunk_field(
             dz = point.z + params.object_distance
 
             # Radial distance
-            R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=params.dtype)
+            R = np.sqrt(dx**2 + dy**2 + dz**2, dtype=np.float32)
 
             # Full complex wave contribution
             wave_contribution = (cos_angle / R) * np.exp(1j * k * R)
@@ -110,7 +216,7 @@ def compute_chunk_field(
     return wave_field_chunk
 
 
-def compute_object_field(
+def compute_object_field_cpu(
     points: list[Point3D],
     normals: list[Point3D],
     params: HologramParameters,
@@ -208,7 +314,7 @@ def compute_hologram(
         params.plate_size,
         params.plate_resolution,
         indexing="xy",
-        dtype=params.dtype
+        dtype=np.float32,
     )
 
     # Load and process mesh
@@ -216,7 +322,10 @@ def compute_hologram(
     points, normals = process_mesh(mesh_data, params.subdivision_factor)
 
     # Compute wave fields
-    object_field = compute_object_field(points, normals, params)
+    if is_cuda_available():
+        object_field = compute_object_field_with_cuda(points, normals, params)
+    else:
+        object_field = compute_object_field_cpu(points, normals, params)
     reference_field = compute_reference_field(params)
 
     scaling_factor = np.abs(object_field).max() / np.abs(reference_field).max() * 0.5

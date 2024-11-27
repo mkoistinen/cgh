@@ -5,6 +5,7 @@ from typing import Tuple
 import warnings
 
 import matplotlib.pyplot as plt
+from numba import cuda
 import numpy as np
 import numpy.typing as npt
 from stl import mesh
@@ -287,3 +288,13 @@ def show_grid_memory_requirements(params: HologramParameters):
     )
     bytes = X.nbytes + Y.nbytes
     print(f"Grid requires {bytes:,d} bytes ({bytes / 1024 ** 2:,.3f} MB)")
+
+
+@lru_cache
+def is_cuda_available() -> bool:
+    try:
+        # Check if CUDA is available
+        cuda.get_current_device()
+        return True
+    except cuda.CudaSupportError:
+        return False

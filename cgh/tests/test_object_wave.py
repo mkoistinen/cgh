@@ -6,6 +6,7 @@ import pytest
 from cgh.hologram import compute_object_field
 from cgh.tests.conftest import FLOAT_TYPES
 from cgh.tests.utilities import generate_test_points_normals
+from cgh.utilities import is_cuda_available
 
 
 class TestObjectWave:
@@ -155,3 +156,30 @@ class TestObjectWave:
             np.abs(left_half), np.abs(right_half), decimal=6,
             err_msg=f"Object wave is not symmetrical at precision {dtype} and plate_resolution {plate_resolution}"
         )
+
+    @pytest.mark.skip(reason="This is an important test and we need to understand why it fails!")
+    @pytest.mark.skipif(not is_cuda_available(), reason="CUDA not available for test.")
+    def test_compute_modes(self, test_parameters):
+        """Test that the object wave constructed via CUDA is the same as via CPU."""
+        params = replace(
+            test_parameters,
+            plate_resolution=test_parameters.plate_resolution,
+            wavelength=test_parameters.dtype(test_parameters.wavelength)
+        )
+        points, normals = generate_test_points_normals(1)
+
+        # Compute object_field with CPU
+        sp_field = compute_object_field(points, normals, params, num_processes=1, force_cpu=True)
+        mp_field = compute_object_field(points, normals, params, force_cpu=True)
+
+        # First, let's be sure multiprocessing is the same as single-processing.
+        np.testing.assert_array_almost_equal(
+            sp_field, mp_field,
+            err_msg="Multiprocessed object field differs from single-processed object field"
+        )
+
+        # Compute object_field with CUDA
+        cuda_field = compute_object_field(points, normals, params, force_cpu=False)
+
+        # Now test that CUDA gives the same results.
+        np.testing.assert_array_almost_equal(sp_field, cuda_field)

@@ -4,7 +4,14 @@ from typing import NamedTuple
 import numpy as np
 
 
-@dataclass(frozen=True)
+class Point3D(NamedTuple):
+    """3D point representation."""
+    x: np.float32
+    y: np.float32
+    z: np.float32
+
+
+@dataclass(frozen=True, kw_only=True)
 class HologramParameters:
     """
     Parameters for hologram simulation.
@@ -17,8 +24,6 @@ class HologramParameters:
         Size of virtual recording plate in millimeters
     plate_resolution : float
         Recording resolution in dots per millimeter
-    light_source_distance : float
-        Distance of coherent source in millimeters, use 0.0 for planar wave.
     rotation_factors : tuple[float, float, float], default (0., 0., 0.)
         Rotational transform in degrees about the X, Y, and Z axis.
     translation_factors : tuple[float, float, float], default (0., 0., 0.)
@@ -31,24 +36,24 @@ class HologramParameters:
         The float resolution to use.
     complex_dtype : type
         The complex number resolution to use.
+    reference_field_origin : tuple[float, float, float]
+        The (x, y, z) coordinates of the reference field's origin relative to
+        the plate's center.
+    illumination_field_origin : tuple[float, float, float]
+        The (x, y, z) coordinates of the reference field's origin relative to
+        the plate's center.
     """
     wavelength: float = 0.532  # 532 nm (green laser) in mm
     plate_size: float = 25.4      # 25.4 mm plate
     plate_resolution: float = 23.622  # dots per mm / 600 dpi
-    light_source_distance: float = 100.0  # mm
     rotation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     translation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     scale_factor: float = 12.0
     subdivision_factor: int = 4
     dtype: type = np.float32
     complex_dtype: type = np.complex64
-
-
-class Point3D(NamedTuple):
-    """3D point representation."""
-    x: np.float32
-    y: np.float32
-    z: np.float32
+    reference_field_origin: Point3D = 0., 0., 100.0
+    illumination_field_origin: Point3D = 0., 0., -500.0
 
 
 class Triangle(NamedTuple):

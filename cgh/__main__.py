@@ -169,7 +169,6 @@ def main() -> None:
         wavelength=args.wavelength,
         plate_size=args.plate_size,
         plate_resolution=args.plate_resolution,
-        light_source_distance=args.light_source_distance,
         scale_factor=args.scale_factor,
         rotation_factors=args.rotation_factors,
         translation_factors=args.translation_factors,

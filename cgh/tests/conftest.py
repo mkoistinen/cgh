@@ -53,7 +53,6 @@ def test_parameters() -> HologramParameters:
         plate_size=25.4,          # 1 inch plate
         plate_resolution=47.244,  # 1200 dpi
         light_source_distance=500.0,
-        object_distance=50.0,
         scale_factor=1.0,
         subdivision_factor=1
     )

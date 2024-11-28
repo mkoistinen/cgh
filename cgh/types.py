@@ -19,8 +19,6 @@ class HologramParameters:
         Recording resolution in dots per millimeter
     light_source_distance : float
         Distance of coherent source in millimeters, use 0.0 for planar wave.
-    object_distance : float
-        Distance of object behind plate in millimeters
     rotation_factors : tuple[float, float, float], default (0., 0., 0.)
         Rotational transform in degrees about the X, Y, and Z axis.
     translation_factors : tuple[float, float, float], default (0., 0., 0.)
@@ -38,7 +36,6 @@ class HologramParameters:
     plate_size: float = 25.4      # 25.4 mm plate
     plate_resolution: float = 23.622  # dots per mm / 600 dpi
     light_source_distance: float = 100.0  # mm
-    object_distance: float = 50.0  # mm behind plate
     rotation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     translation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     scale_factor: float = 12.0

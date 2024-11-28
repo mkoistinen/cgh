@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
 
     # Output configuration
     parser.add_argument(
-        '-o', '--output',
+        '--output', '-o',
         type=Path,
         default="hologram.png",
         help='Output file path (extension determines format)'
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
 
     # Optical parameters
     parser.add_argument(
-        '--wavelength',
+        '--wavelength', '-w',
         type=float,
         default=0.532,
         help='Wavelength of coherent light in millimeters (e.g., 0.532 for 532nm)'
@@ -79,7 +79,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--plate-resolution', '-r',
+        '--plate-resolution', '-z',
         type=float,
         default=11.811,  # 300 dpi
         help='Recording resolution in dots per millimeter'
@@ -92,23 +92,16 @@ def parse_args() -> argparse.Namespace:
         help='Distance of coherent source in millimeters'
     )
 
-    parser.add_argument(
-        '--object-distance',
-        type=float,
-        default=5.0,
-        help='Distance of object behind plate in millimeters'
-    )
-
     # Object processing parameters
     parser.add_argument(
-        '--scale-factor',
+        '--scale-factor', '-s',
         type=float,
         default=5.0,
         help='Scale factor for STL object'
     )
 
     parser.add_argument(
-        '--rotation-factors',
+        '--rotation-factors', '-r',
         type=float,
         default=(0.0, 0.0, 0.0),
         nargs=3,
@@ -116,7 +109,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--translation-factors',
+        '--translation-factors', '-t',
         type=float,
         default=(0.0, 0.0, 0.0),
         nargs=3,
@@ -124,7 +117,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--subdivision-factor', '-s',
+        '--subdivision-factor', '-d',
         type=int,
         default=4,
         help='Number of times to subdivide triangles'
@@ -177,7 +170,6 @@ def main() -> None:
         plate_size=args.plate_size,
         plate_resolution=args.plate_resolution,
         light_source_distance=args.light_source_distance,
-        object_distance=args.object_distance,
         scale_factor=args.scale_factor,
         rotation_factors=args.rotation_factors,
         translation_factors=args.translation_factors,

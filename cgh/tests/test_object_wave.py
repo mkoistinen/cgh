@@ -32,7 +32,7 @@ class TestObjectWave:
         r_center = np.sqrt(
             (X[center_idx, center_idx] - points[0].x) ** 2 +
             (Y[center_idx, center_idx] - points[0].y) ** 2 +
-            (points[0].z + test_parameters.object_distance)**2,
+            (points[0].z)**2,
             dtype=np.float32,
         )
 
@@ -40,7 +40,7 @@ class TestObjectWave:
         r_corner = np.sqrt(
             (X[0, 0] - points[0].x) ** 2 +
             (Y[0, 0] - points[0].y) ** 2 +
-            (points[0].z + test_parameters.object_distance) ** 2,
+            (points[0].z) ** 2,
             dtype=np.float32,
         )
 
@@ -100,7 +100,7 @@ class TestObjectWave:
             print(f"Physical point ({x_mm:.6f}, {y_mm:.6f}) -> Grid indices ({x_idx}, {y_idx})")
 
             # Calculate radial distance
-            R = np.sqrt(x_mm**2 + y_mm**2 + (points[0].z + test_parameters.object_distance)**2)
+            R = np.sqrt(x_mm**2 + y_mm**2 + (points[0].z)**2)
             distances.append(R)
 
             # Sample and normalize phase

@@ -64,7 +64,6 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     """
     # Parameters
     k = 2 * np.pi / params.wavelength
-    object_distance = params.object_distance
 
     # Transfer data to GPU
     X_device = cuda.to_device(X)
@@ -84,7 +83,7 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     # Launch CUDA kernel
     compute_object_field_cuda[blocks_per_grid, threads_per_block](
         X_device, Y_device, points_device, normals_device,
-        object_field_device, k, params.wavelength, object_distance
+        object_field_device, k
     )
 
     # Transfer result back to CPU
@@ -95,7 +94,12 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
 
 @cuda.jit
 def compute_object_field_cuda(
-    X, Y, points, normals, object_field, k, wavelength, object_distance
+    X,
+    Y,
+    points,
+    normals,
+    object_field,
+    k,
 ):
     """
     CUDA kernel to compute the object field contributions.
@@ -119,7 +123,7 @@ def compute_object_field_cuda(
             # Compute vector from grid point to object point
             dx = np.float32(x - px)
             dy = np.float32(y - py)
-            dz = np.float32(pz + object_distance)
+            dz = np.float32(pz)
 
             # Radial distance
             R = math.sqrt(dx**2 + dy**2 + dz**2)
@@ -263,7 +267,7 @@ def compute_chunk_field(
             # Signed differences for proper distance calculation
             dx = X - point.x
             dy = Y - point.y
-            dz = point.z + params.object_distance
+            dz = point.z
 
             # Radial distance
             R = np.sqrt(dx**2 + dy**2 + dz**2)

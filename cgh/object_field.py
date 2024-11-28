@@ -64,15 +64,15 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     """
     # Parameters
     k = 2 * np.pi / params.wavelength
+    illumination_field_origin = np.array(params.illumination_field_origin, dtype=np.float32)
 
     # Transfer data to GPU
     X_device = cuda.to_device(X)
     Y_device = cuda.to_device(Y)
     points_device = cuda.to_device(np.array(points, dtype=np.float32))
     normals_device = cuda.to_device(np.array(normals, dtype=np.float32))
-    # object_field_device = cuda.device_array_like(X)
-    object_field_device = cuda.device_array(X.shape, dtype=np.complex64)  # Corrected
-
+    object_field_device = cuda.device_array(X.shape, dtype=np.complex64)
+    illumination_device = cuda.to_device(illumination_field_origin)
 
     # Define CUDA grid and block sizes
     threads_per_block = (16, 16)
@@ -83,7 +83,7 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
     # Launch CUDA kernel
     compute_object_field_cuda[blocks_per_grid, threads_per_block](
         X_device, Y_device, points_device, normals_device,
-        object_field_device, k
+        object_field_device, k, illumination_device
     )
 
     # Transfer result back to CPU
@@ -100,6 +100,7 @@ def compute_object_field_cuda(
     normals,
     object_field,
     k,
+    illumination_field_origin,
 ):
     """
     CUDA kernel to compute the object field contributions.
@@ -120,31 +121,41 @@ def compute_object_field_cuda(
             px, py, pz = points[p, 0], points[p, 1], points[p, 2]
             nx, ny, nz = normals[p, 0], normals[p, 1], normals[p, 2]
 
-            # Compute vector from grid point to object point
-            dx = np.float32(x - px)
-            dy = np.float32(y - py)
-            dz = np.float32(pz)
+            # Compute illumination wave contribution
+            sx, sy, sz = illumination_field_origin[0], illumination_field_origin[1], illumination_field_origin[2]
+            illumination_dx = px - sx
+            illumination_dy = py - sy
+            illumination_dz = pz - sz
+            R_illumination = math.sqrt(illumination_dx**2 + illumination_dy**2 + illumination_dz**2)
 
-            # Radial distance
-            R = math.sqrt(dx**2 + dy**2 + dz**2)
+            if R_illumination > 1e-9:  # Avoid division by zero
+                illumination_phase = np.float32(k * R_illumination)
+                illumination_wave = (math.cos(illumination_phase) + 1j * math.sin(illumination_phase)) / R_illumination
 
-            if R > 1e-9:  # Avoid division by zero
-                # Compute Lambertian scattering
-                view_vector = cuda.local.array(3, dtype=np.float32)
-                view_vector[0], view_vector[1], view_vector[2] = -dx / R, -dy / R, -dz / R
-                normal_vector = cuda.local.array(3, dtype=np.float32)
-                normal_vector[0], normal_vector[1], normal_vector[2] = nx, ny, nz
+                # Compute vector from grid point to object point
+                dx = np.float32(x - px)
+                dy = np.float32(y - py)
+                dz = np.float32(pz)
+                R_scatter = math.sqrt(dx**2 + dy**2 + dz**2)
 
-                cos_angle = abs(
-                    view_vector[0] * normal_vector[0] +
-                    view_vector[1] * normal_vector[1] +
-                    view_vector[2] * normal_vector[2]
-                )
+                if R_scatter > 1e-9:  # Avoid division by zero
+                    # Compute Lambertian scattering
+                    view_vector = cuda.local.array(3, dtype=np.float32)
+                    view_vector[0], view_vector[1], view_vector[2] = -dx / R_scatter, -dy / R_scatter, -dz / R_scatter
+                    normal_vector = cuda.local.array(3, dtype=np.float32)
+                    normal_vector[0], normal_vector[1], normal_vector[2] = nx, ny, nz
 
-                if cos_angle > 0:
-                    # Accumulate contribution
-                    phase = np.float32(k * R)
-                    contribution += (cos_angle / R) * (math.cos(phase) + 1j * math.sin(phase))
+                    cos_angle = abs(
+                        view_vector[0] * normal_vector[0] +
+                        view_vector[1] * normal_vector[1] +
+                        view_vector[2] * normal_vector[2]
+                    )
+
+                    if cos_angle > 0:
+                        # Accumulate contribution
+                        scatter_phase = np.float32(k * R_scatter)
+                        scattered_wave = (cos_angle / R_scatter) * (math.cos(scatter_phase) + 1j * math.sin(scatter_phase))
+                        contribution += illumination_wave * scattered_wave
 
         # Assign contribution to output array
         object_field[i, j] = contribution
@@ -233,13 +244,32 @@ def compute_chunk_field(
     is_chunked: bool = True,
 ) -> npt.NDArray:
     """
-    Compute the wave field contribution for a chunk of points and normals.
+    Compute the wave field contribution for a chunk of points and normals, illuminated by a spherical wave.
 
-    This is done on CPU and uses multiprocessing. This is the worker function.
+    Parameters
+    ----------
+    points_chunk : list[Point3D]
+        List of 3D points representing the object.
+    normals_chunk : list[Point3D]
+        List of surface normals at the corresponding points.
+    X : np.ndarray
+        Grid of X-coordinates on the plate.
+    Y : np.ndarray
+        Grid of Y-coordinates on the plate.
+    params : HologramParameters
+        Parameters for the hologram simulation.
+    is_chunked : bool, optional
+        Whether the computation is chunked or not, by default True.
+
+    Returns
+    -------
+    npt.NDArray
+        The computed wave field for the chunk.
     """
     wave_field_chunk = np.zeros_like(X, dtype=np.complex64)
     view_vector = np.array([0, 0, -1], dtype=np.float32)
     k = 2 * np.pi / params.wavelength
+    source_x, source_y, source_z = params.illumination_field_origin
 
     if is_chunked:
         ContextManager = nullcontext()
@@ -264,16 +294,24 @@ def compute_chunk_field(
             if cos_angle <= 0.0:
                 continue
 
-            # Signed differences for proper distance calculation
+            # Compute illumination field contribution at the point
+            illumination_dx = point.x - source_x
+            illumination_dy = point.y - source_y
+            illumination_dz = point.z - source_z
+            R_illumination = np.sqrt(
+                illumination_dx**2 + illumination_dy**2 + illumination_dz**2
+            )
+            illumination_wave = np.exp(1j * k * R_illumination) / R_illumination
+
+            # Compute scattered field from the point to the plate
             dx = X - point.x
             dy = Y - point.y
             dz = point.z
+            R_scatter = np.sqrt(dx**2 + dy**2 + dz**2)
+            scattered_wave = (cos_angle / R_scatter) * np.exp(1j * k * R_scatter)
 
-            # Radial distance
-            R = np.sqrt(dx**2 + dy**2 + dz**2)
-
-            # Full complex wave contribution
-            wave_contribution = (cos_angle / R) * np.exp(1j * np.float32(k * R))
+            # Combine illumination and scattered wave
+            wave_contribution = illumination_wave * scattered_wave
             wave_field_chunk += wave_contribution
 
             if not is_chunked:

@@ -17,28 +17,32 @@ DEBUG = False
 
 def compute_reference_field(params: HologramParameters) -> npt.NDArray:
     """
-    Compute a reference wave based on the light source distance.
+    Compute a reference wave based on the light source's position relative to the plate's center.
 
-    If params.light_source_distance == 0.0, treat it as a planar wave, which is
-    approximated as coming from an "infinitely" far point light source.
+    Parameters
+    ----------
+    params : HologramParameters
+        The hologram parameters, including wavelength, plate size, resolution, and other details.
+
+    Returns
+    -------
+    npt.NDArray
+        The computed reference field as a 2D array.
     """
     X, Y = create_grid(
         params.plate_size,
         params.plate_resolution,
         indexing="xy",
-        dtype=np.float32,
+        dtype=params.dtype,
     )
 
     k = 2 * np.pi / params.wavelength
+    source_x, source_y, source_z = params.reference_field_origin
 
-    # Handle planar wave case by setting an effective light source distance
-    if params.light_source_distance == 0.0:
-        light_source_distance = 1.5e14  # Roughly the distance to the Sun.
-    else:
-        light_source_distance = params.light_source_distance
+    # Compute the distance R from each point on the plate to the field origin
+    R = np.sqrt((X - source_x)**2 + (Y - source_y)**2 + source_z**2, dtype=params.dtype)
 
-    # Compute spherical wave
-    R = np.sqrt(X ** 2 + Y ** 2 + light_source_distance ** 2, dtype=np.float32)
+    # Compute the reference field
     reference_field = np.exp(1j * k * R) / R
     return reference_field
 

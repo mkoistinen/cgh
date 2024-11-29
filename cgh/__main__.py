@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
 
     # Required arguments
     parser.add_argument(
-        '--stl_path',
+        '--stl-path',
         type=Path,
         default="cgh/stls/dodecahedron.stl",
         help='Path to input STL file'
@@ -83,13 +83,6 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=11.811,  # 300 dpi
         help='Recording resolution in dots per millimeter'
-    )
-
-    parser.add_argument(
-        '--light-source-distance',
-        type=float,
-        default=100.0,
-        help='Distance of coherent source in millimeters'
     )
 
     # Object processing parameters
@@ -144,6 +137,23 @@ def parse_args() -> argparse.Namespace:
         action='store_true',
         help='If set, will use np.float128 and np.complex256, if available'
     )
+
+    parser.add_argument(
+        '--reference-field-origin', '-R',
+        type=float,
+        default=(0.0, 0.0, 100.0),
+        nargs=3,
+        help='The origin of the reference light field.'
+    )
+
+    parser.add_argument(
+        '--illumination-field-origin', '-I',
+        type=float,
+        default=(0.0, 0.0, -500.0),
+        nargs=3,
+        help='The origin of the illumination light field.'
+    )
+
     return parser.parse_args()
 
 
@@ -175,6 +185,8 @@ def main() -> None:
         subdivision_factor=args.subdivision_factor,
         dtype=dtype,
         complex_dtype=complex_dtype,
+        reference_field_origin=args.reference_field_origin,
+        illumination_field_origin=args.illumination_field_origin,
     )
 
     show_grid_memory_requirements(params)

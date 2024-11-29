@@ -8,6 +8,7 @@ from .utilities import (
     create_grid,
     load_and_transform_mesh,
     process_mesh,
+    Timer,
     visualize_wave,
 )
 
@@ -17,18 +18,20 @@ DEBUG = False
 
 def compute_reference_field(params: HologramParameters) -> npt.NDArray:
     """
-    Compute a reference wave based on the light source's position relative to the plate's center.
+    Compute a reference wave based on the light source's position defined by `params.reference_field_origin`.
 
     Parameters
     ----------
     params : HologramParameters
-        The hologram parameters, including wavelength, plate size, resolution, and other details.
+        The hologram parameters, including wavelength, plate size, resolution,
+        reference field origin, and other details.
 
     Returns
     -------
     npt.NDArray
         The computed reference field as a 2D array.
     """
+    # Generate the grid
     X, Y = create_grid(
         params.plate_size,
         params.plate_resolution,
@@ -39,10 +42,10 @@ def compute_reference_field(params: HologramParameters) -> npt.NDArray:
     k = 2 * np.pi / params.wavelength
     source_x, source_y, source_z = params.reference_field_origin
 
-    # Compute the distance R from each point on the plate to the field origin
+    # Compute the distance R from each point on the plate to the reference field origin
     R = np.sqrt((X - source_x)**2 + (Y - source_y)**2 + source_z**2, dtype=params.dtype)
 
-    # Compute the reference field
+    # Compute the reference field as a spherical wave
     reference_field = np.exp(1j * k * R) / R
     return reference_field
 
@@ -77,8 +80,10 @@ def compute_hologram(
     points, normals = process_mesh(mesh_data, params.subdivision_factor)
 
     # Compute wave fields
-    object_field = compute_object_field(points, normals, params)
-    reference_field = compute_reference_field(params)
+    with Timer("Compute reference field:"):
+        reference_field = compute_reference_field(params)
+    with Timer("Compute object field:"):
+        object_field = compute_object_field(points, normals, params)
 
     # Compute individual intensity terms
     object_intensity = np.abs(object_field) ** 2  # |U_object|^2

@@ -166,9 +166,7 @@ NOTES.md
 .DS_Store
 .python-version
 .vscode/
-hologram_phase.png
-hologram.png
 cgh/__main__.py
-hologram-2400dpi.png
 cgh/stls/low_poly_rabbit.stl
 local/
+.png

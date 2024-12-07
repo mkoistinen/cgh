@@ -154,6 +154,13 @@ def parse_args() -> argparse.Namespace:
         help='The origin of the illumination light field.'
     )
 
+    parser.add_argument(
+        '--use-cuda', '-c',
+        action='store_true',
+        default=False,
+        help='Set to use CUDA, if available.'
+    )
+
     return parser.parse_args()
 
 
@@ -187,6 +194,7 @@ def main() -> None:
         complex_dtype=complex_dtype,
         reference_field_origin=args.reference_field_origin,
         illumination_field_origin=args.illumination_field_origin,
+        use_cuda=args.use_cuda
     )
 
     show_grid_memory_requirements(params)

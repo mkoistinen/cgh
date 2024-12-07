@@ -278,7 +278,7 @@ class TestInterferenceWave:
             err_msg=f"Interference pattern is not symmetric for resolution {plate_resolution}"
         )
 
-    @pytest.mark.parametrize("plate_resolution", [94.488])  # 47.244,
+    @pytest.mark.parametrize("plate_resolution", [47.244, ])  # Need more memory for larger plate sizes!
     @pytest.mark.parametrize("dtype", [np.complex64, ])  # Need more memory for larger types!
     def test_interference_pattern_energy_conservation(self, test_parameters, plate_resolution, dtype):
         """

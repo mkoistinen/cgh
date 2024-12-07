@@ -43,17 +43,18 @@ class HologramParameters:
         The (x, y, z) coordinates of the reference field's origin relative to
         the plate's center.
     """
-    wavelength: float = 0.532  # 532 nm (green laser) in mm
-    plate_size: float = 25.4      # 25.4 mm plate
+    complex_dtype: type = np.complex64
+    dtype: type = np.float32
+    illumination_field_origin: Point3D = 0., 0., -500.0
     plate_resolution: float = 23.622  # dots per mm / 600 dpi
+    plate_size: float = 25.4      # 25.4 mm plate
+    reference_field_origin: Point3D = 0., 0., 100.0
     rotation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
-    translation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
     scale_factor: float = 12.0
     subdivision_factor: int = 4
-    dtype: type = np.float32
-    complex_dtype: type = np.complex64
-    reference_field_origin: Point3D = 0., 0., 100.0
-    illumination_field_origin: Point3D = 0., 0., -500.0
+    translation_factors: tuple[np.float32, np.float32, np.float32] = (0., 0., 0.)
+    use_cuda: bool = False
+    wavelength: float = 0.532  # 532 nm (green laser) in mm
 
 
 class Triangle(NamedTuple):

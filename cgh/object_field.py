@@ -29,15 +29,14 @@ def compute_object_field(
     normals: list[Point3D],
     params: HologramParameters,
     num_processes: int = None,
-    force_cpu: bool = False
 ):
     """
     Use the best method to compute the object field.
     """
-    if not force_cpu and is_cuda_available():
-        return compute_object_field_cuda_device(points, normals, params)
-    else:
+    if not (params.use_cuda and is_cuda_available()):
         return compute_object_field_cpu(points, normals, params, num_processes)
+    else:
+        return compute_object_field_cuda_device(points, normals, params)
 
 
 def compute_object_field_cuda_device(points, normals, params):
@@ -94,12 +93,12 @@ def compute_object_field_cuda_driver(points, normals, X, Y, params):
 
 @cuda.jit
 def compute_object_field_cuda(
-    X,
-    Y,
-    points,
-    normals,
+    X: np.ndarray,
+    Y: np.ndarray,
+    points: list[Point3D],
+    normals: list[Point3D],
     object_field,
-    k,
+    k: np.float32,
     illumination_field_origin,
 ):
     """
@@ -118,32 +117,49 @@ def compute_object_field_cuda(
 
         for p in range(points.shape[0]):
             # Extract point and normal vectors
-            px, py, pz = points[p, 0], points[p, 1], points[p, 2]
-            nx, ny, nz = normals[p, 0], normals[p, 1], normals[p, 2]
+            point_x, point_y, point_z = points[p, 0], points[p, 1], points[p, 2]
+            normal_x, normal_y, normal_z = normals[p, 0], normals[p, 1], normals[p, 2]
 
             # Compute illumination wave contribution
-            sx, sy, sz = illumination_field_origin[0], illumination_field_origin[1], illumination_field_origin[2]
-            illumination_dx = px - sx
-            illumination_dy = py - sy
-            illumination_dz = pz - sz
-            R_illumination = math.sqrt(illumination_dx**2 + illumination_dy**2 + illumination_dz**2)
+            source_x, source_y, source_z = (
+                illumination_field_origin[0],
+                illumination_field_origin[1],
+                illumination_field_origin[2]
+            )
+            illumination_dx = point_x - source_x
+            illumination_dy = point_y - source_y
+            illumination_dz = point_z - source_z
+            R_illumination = math.sqrt(
+                illumination_dx ** 2 +
+                illumination_dy ** 2 +
+                illumination_dz ** 2
+            )
 
             if R_illumination > 1e-9:  # Avoid division by zero
                 illumination_phase = np.float32(k * R_illumination)
-                illumination_wave = (math.cos(illumination_phase) + 1j * math.sin(illumination_phase)) / R_illumination
+                illumination_wave = (
+                    1 * math.cos(illumination_phase) +
+                    1j * math.sin(illumination_phase)
+                ) / R_illumination
 
-                # Compute vector from grid point to object point
-                dx = np.float32(x - px)
-                dy = np.float32(y - py)
-                dz = np.float32(pz)
-                R_scatter = math.sqrt(dx**2 + dy**2 + dz**2)
+                # Compute scattered field from the point to the plate
+                dx = np.float32(x - point_x)
+                dy = np.float32(y - point_y)
+                dz = np.float32(0.0 - point_z)
+                R_scatter = math.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
 
                 if R_scatter > 1e-9:  # Avoid division by zero
                     # Compute Lambertian scattering
                     view_vector = cuda.local.array(3, dtype=np.float32)
-                    view_vector[0], view_vector[1], view_vector[2] = -dx / R_scatter, -dy / R_scatter, -dz / R_scatter
+                    view_vector[0], view_vector[1], view_vector[2] = (
+                        -dx / R_scatter,
+                        -dy / R_scatter,
+                        -dz / R_scatter
+                    )
                     normal_vector = cuda.local.array(3, dtype=np.float32)
-                    normal_vector[0], normal_vector[1], normal_vector[2] = nx, ny, nz
+                    normal_vector[0], normal_vector[1], normal_vector[2] = (
+                        normal_x, normal_y, normal_z
+                    )
 
                     cos_angle = abs(
                         view_vector[0] * normal_vector[0] +
@@ -154,7 +170,11 @@ def compute_object_field_cuda(
                     if cos_angle > 0:
                         # Accumulate contribution
                         scatter_phase = np.float32(k * R_scatter)
-                        scattered_wave = (cos_angle / R_scatter) * (math.cos(scatter_phase) + 1j * math.sin(scatter_phase))
+                        scattered_wave = (cos_angle / R_scatter) * (
+                            1.0 * math.cos(scatter_phase) +
+                            1j * math.sin(scatter_phase)
+                        )
+                        # Combine illumination and scattered wave
                         contribution += illumination_wave * scattered_wave
 
         # Assign contribution to output array
@@ -179,6 +199,9 @@ def compute_object_field_cpu(
         dtype=np.float32,
     )
 
+    # Calculate the "wavenumber"
+    k = 2 * np.pi / params.wavelength
+
     # Use multiprocessing Pool
     if num_processes == 1:
         wave = compute_chunk_field(
@@ -187,6 +210,7 @@ def compute_object_field_cpu(
             X=X,
             Y=Y,
             params=params,
+            k=k,
             is_chunked=False,
         )
         wave_contributions = [wave, ]
@@ -206,7 +230,7 @@ def compute_object_field_cpu(
         # Partial function to include fixed arguments
         partial_compute = partial(
             compute_chunk_field,
-            X=X, Y=Y, params=params, is_chunked=True
+            X=X, Y=Y, params=params, k=k, is_chunked=True
         )
 
         with (
@@ -236,11 +260,12 @@ def compute_object_field_cpu(
 
 
 def compute_chunk_field(
-    points_chunk: list[Point3D],
-    normals_chunk: list[Point3D],
+    points: list[Point3D],
+    normals: list[Point3D],
     X: np.ndarray,
     Y: np.ndarray,
     params: HologramParameters,
+    k: np.float32,
     is_chunked: bool = True,
 ) -> npt.NDArray:
     """
@@ -258,6 +283,8 @@ def compute_chunk_field(
         Grid of Y-coordinates on the plate.
     params : HologramParameters
         Parameters for the hologram simulation.
+    k : np.float32,
+        The "wavenumber"
     is_chunked : bool, optional
         Whether the computation is chunked or not, by default True.
 
@@ -268,7 +295,6 @@ def compute_chunk_field(
     """
     wave_field_chunk = np.zeros_like(X, dtype=np.complex64)
     view_vector = np.array([0, 0, -1], dtype=np.float32)
-    k = 2 * np.pi / params.wavelength
     source_x, source_y, source_z = params.illumination_field_origin
 
     if is_chunked:
@@ -284,8 +310,8 @@ def compute_chunk_field(
 
     with ContextManager as progress:
         if not is_chunked:
-            task = progress.add_task("Computing (at once)", total=len(points_chunk))
-        for point, normal in zip(points_chunk, normals_chunk):
+            task = progress.add_task("Computing (at once)", total=len(points))
+        for point, normal in zip(points, normals):
             # Lambert scattering
             cos_angle = np.abs(
                 np.dot(np.array(normal, dtype=np.float32), view_vector),
@@ -299,21 +325,42 @@ def compute_chunk_field(
             illumination_dy = point.y - source_y
             illumination_dz = point.z - source_z
             R_illumination = np.sqrt(
-                illumination_dx**2 + illumination_dy**2 + illumination_dz**2
+                illumination_dx**2 +
+                illumination_dy**2 +
+                illumination_dz**2
             )
-            illumination_wave = np.exp(1j * k * R_illumination) / R_illumination
 
-            # Compute scattered field from the point to the plate
-            dx = X - point.x
-            dy = Y - point.y
-            dz = point.z
-            R_scatter = np.sqrt(dx**2 + dy**2 + dz**2)
-            scattered_wave = (cos_angle / R_scatter) * np.exp(1j * k * R_scatter)
+            if R_illumination > 1e-9:  # Avoid division by zero
+                # This can (should) be done like this, but is...
+                # illumination_wave = np.exp(1j * k * R_illumination) / R_illumination
 
-            # Combine illumination and scattered wave
-            wave_contribution = illumination_wave * scattered_wave
-            wave_field_chunk += wave_contribution
+                # ... done like this for parity with the CUDA implementation for now.
+                illumination_phase = np.float32(k * R_illumination)
+                illumination_wave = (
+                    1 * np.cos(illumination_phase) +
+                    1j * math.sin(illumination_phase)
+                ) / R_illumination
 
+                # Compute scattered field from the point to the plate
+                dx = np.float32(X - point.x)
+                dy = np.float32(Y - point.y)
+                dz = np.float32(0.0 - point.z)
+                R_scatter = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2, dtype=np.float32)
+
+                if cos_angle > 0 and R_scatter.all() > 1.e-9:
+                    # This can (should) be done like this, but is...
+                    # scattered_wave = (cos_angle / R_scatter) * np.exp(1j * k * R_scatter)
+
+                    # ... done like this for parity with the CUDA implementation for now.
+                    scatter_phase = np.float32(k * R_scatter)
+                    scattered_wave = (cos_angle / R_scatter) * (
+                        1.0 * np.cos(scatter_phase) +
+                        1j * np.sin(scatter_phase)
+                    )
+                    # Combine illumination and scattered wave
+                    wave_field_chunk += illumination_wave * scattered_wave
+
+            # No matter what, advance the progress meter
             if not is_chunked:
                 progress.update(task, advance=1)
 

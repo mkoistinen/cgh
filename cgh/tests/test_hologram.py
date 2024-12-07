@@ -37,10 +37,12 @@ def test_mesh_processing_accuracy():
 @pytest.mark.parametrize("light_source_distance", [0.0, 500.0])
 def test_precision_impact(dtype, test_parameters, plate_resolution, light_source_distance):
     """Test the impact of numerical precision on interference pattern symmetry."""
+    source_point = 0.0, 0.0, light_source_distance
     test_parameters = replace(
         test_parameters,
         plate_resolution=plate_resolution,
-        light_source_distance=light_source_distance,
+        reference_field_origin=source_point,
+        illumination_field_origin=(0.0, 0.0, -100.0),
     )
     interference, _phase = compute_hologram(Path("cgh/stls/symmetric_object.stl"), test_parameters)
 
